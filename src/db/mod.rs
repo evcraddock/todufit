@@ -1,7 +1,10 @@
 mod dish_repo;
+mod meallog_repo;
 mod mealplan_repo;
 
 pub use dish_repo::DishRepository;
+#[allow(unused_imports)]
+pub use meallog_repo::MealLogRepository;
 #[allow(unused_imports)]
 pub use mealplan_repo::MealPlanRepository;
 
