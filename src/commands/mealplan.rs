@@ -4,8 +4,9 @@ use std::io::{self, Write};
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::db::{DishRepository, MealPlanRepository};
+use crate::db::DishRepository;
 use crate::models::{MealPlan, MealType};
+use crate::sync::SyncMealPlanRepository;
 
 #[derive(Clone, ValueEnum, Default)]
 pub enum OutputFormat {
@@ -132,7 +133,7 @@ pub enum MealPlanSubcommand {
 impl MealPlanCommand {
     pub async fn run(
         &self,
-        mealplan_repo: &MealPlanRepository,
+        mealplan_repo: &SyncMealPlanRepository,
         dish_repo: &DishRepository,
         config: &Config,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -405,7 +406,7 @@ impl MealPlanCommand {
                 let plan_uuid = Uuid::parse_str(plan_id)
                     .map_err(|_| format!("Invalid plan UUID: {}", plan_id))?;
 
-                // Get plan
+                // Get plan (for title in success message)
                 let plan = mealplan_repo
                     .get_by_id(plan_uuid)
                     .await?
@@ -420,15 +421,6 @@ impl MealPlanCommand {
 
                 let resolved_dish =
                     resolved_dish.ok_or_else(|| format!("Dish not found: {}", dish))?;
-
-                // Check if already in plan
-                if plan.dishes.iter().any(|d| d.id == resolved_dish.id) {
-                    return Err(format!(
-                        "Dish '{}' is already in this meal plan",
-                        resolved_dish.name
-                    )
-                    .into());
-                }
 
                 mealplan_repo.add_dish(plan_uuid, resolved_dish.id).await?;
                 println!("Added '{}' to '{}'", resolved_dish.name, plan.title);
@@ -440,7 +432,7 @@ impl MealPlanCommand {
                 let plan_uuid = Uuid::parse_str(plan_id)
                     .map_err(|_| format!("Invalid plan UUID: {}", plan_id))?;
 
-                // Get plan
+                // Get plan (for title in success message)
                 let plan = mealplan_repo
                     .get_by_id(plan_uuid)
                     .await?
@@ -455,13 +447,6 @@ impl MealPlanCommand {
 
                 let resolved_dish =
                     resolved_dish.ok_or_else(|| format!("Dish not found: {}", dish))?;
-
-                // Check if in plan
-                if !plan.dishes.iter().any(|d| d.id == resolved_dish.id) {
-                    return Err(
-                        format!("Dish '{}' is not in this meal plan", resolved_dish.name).into(),
-                    );
-                }
 
                 mealplan_repo
                     .remove_dish(plan_uuid, resolved_dish.id)

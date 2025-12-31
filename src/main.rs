@@ -5,8 +5,8 @@ use todufit::commands::{
     meal::MealRepos, ConfigCommand, DishCommand, MealCommand, MealPlanCommand,
 };
 use todufit::config::Config;
-use todufit::db::{init_db, DishRepository, MealLogRepository, MealPlanRepository};
-use todufit::sync::SyncDishRepository;
+use todufit::db::{init_db, DishRepository};
+use todufit::sync::{SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
 
 #[derive(Parser)]
 #[command(name = "todufit")]
@@ -58,8 +58,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Meal(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
-            let meallog_repo = MealLogRepository::new(pool.clone());
-            let mealplan_repo = MealPlanRepository::new(pool.clone());
+            let meallog_repo = SyncMealLogRepository::new(pool.clone());
+            let mealplan_repo = SyncMealPlanRepository::new(pool.clone());
             let dish_repo = DishRepository::new(pool);
             let repos = MealRepos {
                 meallog: &meallog_repo,
@@ -70,7 +70,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Mealplan(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
-            let mealplan_repo = MealPlanRepository::new(pool.clone());
+            let mealplan_repo = SyncMealPlanRepository::new(pool.clone());
             let dish_repo = DishRepository::new(pool);
             cmd.run(&mealplan_repo, &dish_repo, &config).await?;
         }

@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::db::{DishRepository, MealLogRepository, MealPlanRepository};
+use crate::db::DishRepository;
 use crate::models::{MealLog, MealType};
+use crate::sync::{SyncMealLogRepository, SyncMealPlanRepository};
 
 #[derive(Clone, ValueEnum, Default)]
 pub enum OutputFormat {
@@ -16,8 +17,8 @@ pub enum OutputFormat {
 
 /// Repositories needed for meal commands
 pub struct MealRepos<'a> {
-    pub meallog: &'a MealLogRepository,
-    pub mealplan: &'a MealPlanRepository,
+    pub meallog: &'a SyncMealLogRepository,
+    pub mealplan: &'a SyncMealPlanRepository,
     pub dish: &'a DishRepository,
 }
 

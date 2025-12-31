@@ -22,12 +22,16 @@
 //! ```
 
 pub mod dish_sync;
+pub mod meallog_sync;
+pub mod mealplan_sync;
 pub mod projection;
 pub mod schema;
 pub mod storage;
 pub mod writer;
 
 pub use dish_sync::{SyncDishError, SyncDishRepository};
+pub use meallog_sync::{SyncMealLogError, SyncMealLogRepository};
+pub use mealplan_sync::{SyncMealPlanError, SyncMealPlanRepository};
 pub use projection::{DishProjection, MealLogProjection, MealPlanProjection, ProjectionError};
 pub use schema::{DishesDoc, MealLogsDoc, MealPlansDoc};
 pub use storage::{DocType, DocumentStorage, StorageError};
