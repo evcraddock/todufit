@@ -1,1 +1,3 @@
-// Commands module - to be implemented
+mod dish;
+
+pub use dish::{DishCommand, DishSubcommand};
