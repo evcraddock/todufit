@@ -76,6 +76,28 @@ pub enum MealPlanSubcommand {
         #[arg(long = "type", short = 't', value_name = "TYPE")]
         meal_type: Option<String>,
     },
+
+    /// Update a meal plan
+    Update {
+        /// Meal plan ID (UUID)
+        id: String,
+
+        /// New date (YYYY-MM-DD)
+        #[arg(long)]
+        date: Option<String>,
+
+        /// New meal type
+        #[arg(long = "type", short = 't', value_name = "TYPE")]
+        meal_type: Option<String>,
+
+        /// New title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// New cook
+        #[arg(long)]
+        cook: Option<String>,
+    },
 }
 
 impl MealPlanCommand {
@@ -269,6 +291,51 @@ impl MealPlanCommand {
                         }
                     }
                 }
+                Ok(())
+            }
+
+            MealPlanSubcommand::Update {
+                id,
+                date,
+                meal_type,
+                title,
+                cook,
+            } => {
+                // Check if any updates provided
+                let has_updates =
+                    date.is_some() || meal_type.is_some() || title.is_some() || cook.is_some();
+
+                if !has_updates {
+                    return Err("Nothing to update. Provide at least one option.".into());
+                }
+
+                // Parse UUID
+                let uuid = Uuid::parse_str(id).map_err(|_| format!("Invalid UUID: {}", id))?;
+
+                // Get existing plan
+                let mut plan = mealplan_repo
+                    .get_by_id(uuid)
+                    .await?
+                    .ok_or_else(|| format!("Meal plan not found: {}", id))?;
+
+                // Apply updates
+                if let Some(d) = date {
+                    plan.date = NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                        .map_err(|_| format!("Invalid date format '{}'. Use YYYY-MM-DD.", d))?;
+                }
+                if let Some(mt) = meal_type {
+                    plan.meal_type = mt.parse().map_err(|e: String| e)?;
+                }
+                if let Some(t) = title {
+                    plan.title = t.clone();
+                }
+                if let Some(c) = cook {
+                    plan.cook = c.clone();
+                }
+
+                let updated = mealplan_repo.update(&plan).await?;
+                println!("Updated meal plan:");
+                println!("{}", updated);
                 Ok(())
             }
         }
