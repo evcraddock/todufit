@@ -1,4 +1,4 @@
-.PHONY: build test run clean check fmt fmt-check clippy lint release install
+.PHONY: build test run clean check fmt fmt-check clippy lint release install dev dev-stop dev-logs
 
 # Default target
 all: build
@@ -48,3 +48,36 @@ install:
 
 # Run tests and lints (good for CI/pre-commit)
 ci: lint test
+
+# ============================================================================
+# Development Environment
+# ============================================================================
+
+# Start development environment via shoreman
+dev:
+	@./hack/shoreman.sh
+
+# Stop development environment
+dev-stop:
+	@if [ -f .shoreman.pid ]; then \
+		pid=$$(cat .shoreman.pid); \
+		if kill -0 $$pid 2>/dev/null; then \
+			echo "Stopping development environment (PID: $$pid)..."; \
+			kill $$pid; \
+			rm -f .shoreman.pid; \
+			echo "Stopped."; \
+		else \
+			echo "Process not running, cleaning up stale PID file."; \
+			rm -f .shoreman.pid; \
+		fi \
+	else \
+		echo "Development environment is not running."; \
+	fi
+
+# Tail development logs
+dev-logs:
+	@if [ -f dev.log ]; then \
+		tail -f dev.log; \
+	else \
+		echo "No dev.log found. Start the dev environment with 'make dev' first."; \
+	fi

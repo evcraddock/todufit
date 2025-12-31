@@ -33,6 +33,25 @@ impl<T> ConfigValue<T> {
     }
 }
 
+/// Sync configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SyncConfig {
+    /// Server URL (e.g., "ws://localhost:8080" or "wss://sync.example.com")
+    pub server_url: Option<String>,
+    /// API key for authentication
+    pub api_key: Option<String>,
+    /// Enable automatic sync after writes (default: false)
+    #[serde(default)]
+    pub auto_sync: bool,
+}
+
+impl SyncConfig {
+    /// Returns true if sync is configured (has both server_url and api_key)
+    pub fn is_configured(&self) -> bool {
+        self.server_url.is_some() && self.api_key.is_some()
+    }
+}
+
 /// Application configuration with source tracking
 #[derive(Debug, Clone, Serialize)]
 pub struct Config {
@@ -43,6 +62,8 @@ pub struct Config {
     /// Config file path used (if any)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_file: Option<PathBuf>,
+    /// Sync configuration
+    pub sync: SyncConfig,
 }
 
 /// Internal struct for deserializing config file
@@ -51,6 +72,7 @@ pub struct Config {
 struct ConfigFile {
     database_path: Option<PathBuf>,
     created_by: Option<String>,
+    sync: Option<SyncConfig>,
 }
 
 impl Config {
@@ -63,6 +85,7 @@ impl Config {
         let mut database_path = ConfigValue::new(default_db_path.clone(), ConfigSource::Default);
         let mut created_by = ConfigValue::new(default_created_by.clone(), ConfigSource::Default);
         let mut config_file = None;
+        let mut sync = SyncConfig::default();
 
         // Try to load from config file
         let path = config_path.unwrap_or_else(Self::default_config_path);
@@ -80,6 +103,9 @@ impl Config {
             if let Some(user) = file_config.created_by {
                 created_by = ConfigValue::new(user, ConfigSource::File);
             }
+            if let Some(sync_config) = file_config.sync {
+                sync = sync_config;
+            }
         }
 
         // Apply environment variable overrides
@@ -89,11 +115,19 @@ impl Config {
         if let Ok(user) = std::env::var("TODUFIT_CREATED_BY") {
             created_by = ConfigValue::new(user, ConfigSource::Environment);
         }
+        // Sync env var overrides
+        if let Ok(url) = std::env::var("TODUFIT_SYNC_URL") {
+            sync.server_url = Some(url);
+        }
+        if let Ok(key) = std::env::var("TODUFIT_SYNC_API_KEY") {
+            sync.api_key = Some(key);
+        }
 
         Ok(Self {
             database_path,
             created_by,
             config_file,
+            sync,
         })
     }
 

@@ -1,2 +1,12 @@
 /target
 hack/todufit.db
+
+# Development environment
+.env
+.shoreman.pid
+dev.log
+dev-prev.log
+
+# Server data and config (contains API keys)
+/data/
+/config/server.yaml

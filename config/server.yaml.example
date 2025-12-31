@@ -1,0 +1,14 @@
+# ToduFit Sync Server Configuration
+# Copy this file to config/server.yaml and add your API keys
+
+# API keys for authentication
+# Each key grants access to sync data for a specific user/group
+api_keys:
+  - key: "your-secret-api-key-here"
+    user_id: "your-username"
+    group_id: "default"
+  
+  # Example: Multiple users in a family group
+  # - key: "spouse-api-key"
+  #   user_id: "spouse"
+  #   group_id: "family"

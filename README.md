@@ -160,11 +160,48 @@ Total: 2 meal(s)
 
 ## Development
 
+### Quick Commands
+
 ```bash
-cargo build          # Build
-cargo test           # Run tests
-cargo run -- <cmd>   # Run locally
+make build           # Build debug binary
+make test            # Run tests
+make fmt             # Format code
+make lint            # Run clippy + format check
+make run ARGS="..."  # Run CLI with arguments
 ```
+
+### Development Environment with Sync Server
+
+For testing sync functionality, you can run the sync server locally:
+
+1. **Set up environment:**
+   ```bash
+   cp .env.example .env
+   cp config/server.yaml.example config/server.yaml
+   ```
+
+2. **Configure API key** in `config/server.yaml`:
+   ```yaml
+   api_keys:
+     - key: "your-dev-api-key"
+       user_id: "dev"
+       group_id: "default"
+   ```
+
+3. **Start the development environment:**
+   ```bash
+   make dev
+   ```
+   This starts the sync server on the configured port (default: 8080).
+
+4. **Other dev commands:**
+   ```bash
+   make dev-stop    # Stop the development environment
+   make dev-logs    # Tail development logs
+   ```
+
+5. **Connect CLI to local server:**
+   Configure the CLI to sync with `localhost:8080` using your dev API key.
 
 ## Roadmap
 
