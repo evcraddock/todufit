@@ -1,6 +1,9 @@
 mod dish_repo;
+mod mealplan_repo;
 
 pub use dish_repo::DishRepository;
+#[allow(unused_imports)]
+pub use mealplan_repo::MealPlanRepository;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::PathBuf;
