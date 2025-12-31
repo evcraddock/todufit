@@ -1,0 +1,3 @@
+# Local development configuration
+database_path: hack/todufit.db
+created_by: dev
