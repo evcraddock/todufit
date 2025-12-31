@@ -1,4 +1,5 @@
 use clap::{Args, Subcommand, ValueEnum};
+use uuid::Uuid;
 
 use crate::db::DishRepository;
 use crate::models::Dish;
@@ -61,6 +62,16 @@ pub enum DishSubcommand {
         /// Filter by tag
         #[arg(long = "tag", value_name = "TAG")]
         tag: Option<String>,
+    },
+
+    /// Show a dish's details
+    Show {
+        /// Dish ID (UUID) or name
+        identifier: String,
+
+        /// Output format
+        #[arg(long, short, value_enum, default_value = "text")]
+        format: OutputFormat,
     },
 }
 
@@ -153,6 +164,30 @@ impl DishCommand {
                     }
                 }
                 Ok(())
+            }
+
+            DishSubcommand::Show { identifier, format } => {
+                // Try to parse as UUID first, then fall back to name lookup
+                let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
+                    repo.get_by_id(uuid).await?
+                } else {
+                    repo.get_by_name(identifier).await?
+                };
+
+                match dish {
+                    Some(dish) => {
+                        match format {
+                            OutputFormat::Json => {
+                                println!("{}", serde_json::to_string_pretty(&dish)?);
+                            }
+                            OutputFormat::Text => {
+                                println!("{}", dish);
+                            }
+                        }
+                        Ok(())
+                    }
+                    None => Err(format!("Dish not found: {}", identifier).into()),
+                }
             }
         }
     }
