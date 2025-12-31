@@ -25,22 +25,27 @@
 //! - `GET /me`: Returns current user info (auth required)
 //! - `GET /docs/:doc_type`: Get document bytes (auth required)
 //! - `PUT /docs/:doc_type`: Save document bytes (auth required)
+//! - `GET /sync/:doc_type`: WebSocket sync endpoint (auth via query param)
 
 use axum::{
     body::Bytes,
-    extract::{Path, Request, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, Query, Request, State,
+    },
     http::{header, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
     Extension, Json, Router,
 };
+use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use todufit::server::{ServerStorage, ServerStorageError};
+use todufit::server::{ClientSync, DocType, ServerStorage, ServerStorageError, SyncHub};
 use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -174,6 +179,7 @@ impl ApiKeyStore {
 struct AppState {
     api_keys: Arc<ApiKeyStore>,
     storage: Arc<RwLock<ServerStorage>>,
+    sync_hub: Arc<SyncHub>,
 }
 
 /// Auth error response
@@ -388,6 +394,181 @@ async fn put_doc(
 }
 
 // ============================================================================
+// WebSocket Sync
+// ============================================================================
+
+/// Query parameters for WebSocket sync endpoint
+#[derive(Deserialize)]
+struct SyncQuery {
+    /// API key for authentication
+    key: String,
+}
+
+/// WebSocket sync endpoint handler
+async fn sync_handler(
+    State(state): State<AppState>,
+    Path(doc_type_str): Path<String>,
+    Query(query): Query<SyncQuery>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    // Validate API key
+    let user = match state.api_keys.validate(&query.key) {
+        Some(user) => user,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(AuthError {
+                    error: "invalid_key",
+                    message: "Invalid API key",
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    // Validate document type
+    let doc_type = match DocType::parse(&doc_type_str) {
+        Some(dt) => dt,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(DocError::new(
+                    "invalid_doc_type",
+                    format!("Invalid document type: {}", doc_type_str),
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    tracing::info!(
+        "WebSocket sync connection from {} for {}/{:?}",
+        user.user_id,
+        user.group_id,
+        doc_type
+    );
+
+    // Upgrade to WebSocket
+    ws.on_upgrade(move |socket| handle_sync_socket(socket, state, user, doc_type))
+}
+
+/// Handle WebSocket sync connection
+async fn handle_sync_socket(socket: WebSocket, state: AppState, user: AuthUser, doc_type: DocType) {
+    let (mut sender, mut receiver) = socket.split();
+
+    // Create client sync manager
+    let client_sync = ClientSync::new(
+        state.storage.clone(),
+        state.sync_hub.clone(),
+        user.group_id.clone(),
+        user.user_id.clone(),
+    );
+
+    // Subscribe to updates from other clients
+    let mut update_rx = state.sync_hub.subscribe(&user.group_id, doc_type).await;
+
+    // Initial sync - send current document state
+    match client_sync.sync_document(doc_type, None).await {
+        Ok(Some(msg)) => {
+            if let Err(e) = sender.send(Message::Binary(msg.into())).await {
+                tracing::error!("Failed to send initial sync message: {}", e);
+                return;
+            }
+        }
+        Ok(None) => {
+            // No sync needed
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate initial sync message: {}", e);
+            return;
+        }
+    }
+
+    // Handle messages
+    loop {
+        tokio::select! {
+            // Receive message from client
+            msg = receiver.next() => {
+                match msg {
+                    Some(Ok(Message::Binary(data))) => {
+                        // Process sync message from client
+                        match client_sync.sync_document(doc_type, Some(&data)).await {
+                            Ok(Some(response)) => {
+                                if let Err(e) = sender.send(Message::Binary(response.into())).await {
+                                    tracing::error!("Failed to send sync response: {}", e);
+                                    break;
+                                }
+                            }
+                            Ok(None) => {
+                                // Sync complete, no more messages needed
+                            }
+                            Err(e) => {
+                                tracing::error!("Sync error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) => {
+                        tracing::info!("Client {} disconnected", user.user_id);
+                        break;
+                    }
+                    Some(Ok(Message::Ping(data))) => {
+                        if let Err(e) = sender.send(Message::Pong(data)).await {
+                            tracing::error!("Failed to send pong: {}", e);
+                            break;
+                        }
+                    }
+                    Some(Ok(_)) => {
+                        // Ignore other message types
+                    }
+                    Some(Err(e)) => {
+                        tracing::error!("WebSocket error: {}", e);
+                        break;
+                    }
+                    None => {
+                        // Connection closed
+                        break;
+                    }
+                }
+            }
+
+            // Receive broadcast from other clients
+            update = update_rx.recv() => {
+                match update {
+                    Ok(_) => {
+                        // Another client updated the document, send sync message
+                        match client_sync.sync_document(doc_type, None).await {
+                            Ok(Some(msg)) => {
+                                if let Err(e) = sender.send(Message::Binary(msg.into())).await {
+                                    tracing::error!("Failed to send broadcast sync: {}", e);
+                                    break;
+                                }
+                            }
+                            Ok(None) => {
+                                // No sync needed
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to generate broadcast sync: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Broadcast receive error: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    tracing::info!(
+        "WebSocket sync ended for {} on {}/{:?}",
+        user.user_id,
+        user.group_id,
+        doc_type
+    );
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -417,17 +598,25 @@ async fn main() {
     // Load API keys
     let api_keys = Arc::new(ApiKeyStore::load(&config.config_path));
 
-    // Create storage
+    // Create storage and sync hub
     let storage = Arc::new(RwLock::new(ServerStorage::new(&config.data_dir)));
+    let sync_hub = Arc::new(SyncHub::new());
 
     // Build app state
-    let state = AppState { api_keys, storage };
+    let state = AppState {
+        api_keys,
+        storage,
+        sync_hub,
+    };
 
     // Build router
     // Public routes (no auth)
-    let public_routes = Router::new().route("/health", get(health));
+    let public_routes = Router::new()
+        .route("/health", get(health))
+        // WebSocket sync uses query param auth, not middleware
+        .route("/sync/{doc_type}", get(sync_handler));
 
-    // Protected routes (auth required)
+    // Protected routes (auth required via header)
     let protected_routes = Router::new()
         .route("/me", get(me))
         .route("/docs/{doc_type}", get(get_doc).put(put_doc))

@@ -17,7 +17,7 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 /// Document types stored on the server.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocType {
     Dishes,
     MealPlans,
