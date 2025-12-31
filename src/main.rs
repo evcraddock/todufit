@@ -12,6 +12,7 @@ use db::{init_db, DishRepository};
 
 #[derive(Parser)]
 #[command(name = "todufit")]
+#[command(version)]
 #[command(about = "A fitness tracking CLI application", long_about = None)]
 struct Cli {
     /// Path to config file
