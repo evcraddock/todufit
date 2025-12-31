@@ -57,7 +57,10 @@ impl Config {
     /// Load configuration with priority: env vars > config file > defaults
     pub fn load(config_path: Option<PathBuf>) -> Result<Self, ConfigError> {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let default_db_path = PathBuf::from(&home).join(".todufit").join("todufit.db");
+        let default_db_path = PathBuf::from(&home)
+            .join(".config")
+            .join("todufit")
+            .join("todufit.db");
         let default_created_by = "default".to_string();
 
         // Start with defaults
