@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::config::Config;
 use crate::db::DishRepository;
-use crate::models::Dish;
+use crate::models::{Dish, Ingredient};
 
 #[derive(Clone, ValueEnum, Default)]
 pub enum OutputFormat {
@@ -126,6 +126,24 @@ pub enum DishSubcommand {
         /// Skip confirmation prompt
         #[arg(long, short)]
         force: bool,
+    },
+
+    /// Add an ingredient to a dish
+    AddIngredient {
+        /// Dish ID (UUID) or name
+        identifier: String,
+
+        /// Ingredient name
+        #[arg(long)]
+        name: String,
+
+        /// Quantity (amount)
+        #[arg(long)]
+        quantity: f64,
+
+        /// Unit of measurement
+        #[arg(long)]
+        unit: String,
     },
 }
 
@@ -359,6 +377,37 @@ impl DishCommand {
 
                 repo.delete(dish.id).await?;
                 println!("Deleted dish: {}", dish.name);
+                Ok(())
+            }
+
+            DishSubcommand::AddIngredient {
+                identifier,
+                name,
+                quantity,
+                unit,
+            } => {
+                // Validate quantity
+                if *quantity <= 0.0 {
+                    return Err("Quantity must be a positive number".into());
+                }
+
+                // Find the dish
+                let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
+                    repo.get_by_id(uuid).await?
+                } else {
+                    repo.get_by_name(identifier).await?
+                };
+
+                let dish = match dish {
+                    Some(d) => d,
+                    None => return Err(format!("Dish not found: {}", identifier).into()),
+                };
+
+                let ingredient = Ingredient::new(name, *quantity, unit);
+                repo.add_ingredient(dish.id, &ingredient).await?;
+
+                println!("Added ingredient to '{}':", dish.name);
+                println!("  {}", ingredient);
                 Ok(())
             }
         }
