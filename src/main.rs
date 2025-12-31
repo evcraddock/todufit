@@ -6,7 +6,7 @@ mod config;
 mod db;
 mod models;
 
-use commands::{ConfigCommand, DishCommand, MealCommand, MealPlanCommand};
+use commands::{meal::MealRepos, ConfigCommand, DishCommand, MealCommand, MealPlanCommand};
 use config::Config;
 use db::{init_db, DishRepository, MealLogRepository, MealPlanRepository};
 
@@ -61,8 +61,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Meal(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
             let meallog_repo = MealLogRepository::new(pool.clone());
-            let mealplan_repo = MealPlanRepository::new(pool);
-            cmd.run(&meallog_repo, &mealplan_repo, &config).await?;
+            let mealplan_repo = MealPlanRepository::new(pool.clone());
+            let dish_repo = DishRepository::new(pool);
+            let repos = MealRepos {
+                meallog: &meallog_repo,
+                mealplan: &mealplan_repo,
+                dish: &dish_repo,
+            };
+            cmd.run(repos, &config).await?;
         }
         Some(Commands::Mealplan(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;

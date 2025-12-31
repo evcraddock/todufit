@@ -1,6 +1,6 @@
 mod config_cmd;
 mod dish;
-mod meal;
+pub mod meal;
 mod mealplan;
 
 pub use config_cmd::ConfigCommand;
