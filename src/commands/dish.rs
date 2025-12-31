@@ -145,6 +145,16 @@ pub enum DishSubcommand {
         #[arg(long)]
         unit: String,
     },
+
+    /// Remove an ingredient from a dish
+    RemoveIngredient {
+        /// Dish ID (UUID) or name
+        identifier: String,
+
+        /// Ingredient name to remove
+        #[arg(long)]
+        name: String,
+    },
 }
 
 impl DishCommand {
@@ -408,6 +418,34 @@ impl DishCommand {
 
                 println!("Added ingredient to '{}':", dish.name);
                 println!("  {}", ingredient);
+                Ok(())
+            }
+
+            DishSubcommand::RemoveIngredient { identifier, name } => {
+                // Find the dish
+                let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
+                    repo.get_by_id(uuid).await?
+                } else {
+                    repo.get_by_name(identifier).await?
+                };
+
+                let dish = match dish {
+                    Some(d) => d,
+                    None => return Err(format!("Dish not found: {}", identifier).into()),
+                };
+
+                // Check if ingredient exists
+                let has_ingredient = dish
+                    .ingredients
+                    .iter()
+                    .any(|i| i.name.to_lowercase() == name.to_lowercase());
+
+                if !has_ingredient {
+                    return Err(format!("Ingredient not found: {}", name).into());
+                }
+
+                repo.remove_ingredient(dish.id, name).await?;
+                println!("Removed ingredient '{}' from '{}'", name, dish.name);
                 Ok(())
             }
         }
