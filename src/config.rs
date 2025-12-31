@@ -124,12 +124,7 @@ impl std::fmt::Display for ConfigError {
                 write!(f, "Failed to read config file '{}': {}", path.display(), e)
             }
             ConfigError::ParseError(path, e) => {
-                write!(
-                    f,
-                    "Failed to parse config file '{}': {}",
-                    path.display(),
-                    e
-                )
+                write!(f, "Failed to parse config file '{}': {}", path.display(), e)
             }
         }
     }

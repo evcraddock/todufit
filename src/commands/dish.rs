@@ -151,10 +151,7 @@ impl DishCommand {
                         println!("{}", serde_json::to_string_pretty(&dishes)?);
                     }
                     OutputFormat::Text => {
-                        println!(
-                            "{:<36}  {:<30}  {}",
-                            "ID", "NAME", "TAGS"
-                        );
+                        println!("{:<36}  {:<30}  TAGS", "ID", "NAME");
                         println!("{}", "-".repeat(80));
                         for dish in &dishes {
                             let tags = dish.tags.join(", ");

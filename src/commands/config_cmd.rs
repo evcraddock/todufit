@@ -47,10 +47,7 @@ impl ConfigCommand {
                         }
                         println!();
 
-                        println!(
-                            "database_path: {}",
-                            config.database_path.value.display()
-                        );
+                        println!("database_path: {}", config.database_path.value.display());
                         println!("  source: {}", config.database_path.source);
                         println!();
 
