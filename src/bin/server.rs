@@ -23,9 +23,12 @@
 //!
 //! - `GET /health`: Health check endpoint (no auth required)
 //! - `GET /me`: Returns current user info (auth required)
+//! - `GET /docs/:doc_type`: Get document bytes (auth required)
+//! - `PUT /docs/:doc_type`: Save document bytes (auth required)
 
 use axum::{
-    extract::{Request, State},
+    body::Bytes,
+    extract::{Path, Request, State},
     http::{header, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -37,6 +40,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use todufit::server::{ServerStorage, ServerStorageError};
+use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -168,8 +173,7 @@ impl ApiKeyStore {
 #[derive(Clone)]
 struct AppState {
     api_keys: Arc<ApiKeyStore>,
-    #[allow(dead_code)]
-    data_dir: PathBuf,
+    storage: Arc<RwLock<ServerStorage>>,
 }
 
 /// Auth error response
@@ -267,6 +271,122 @@ async fn me(Extension(user): Extension<AuthUser>) -> Json<MeResponse> {
     })
 }
 
+/// Error response for document operations
+#[derive(Serialize)]
+struct DocError {
+    error: String,
+    message: String,
+}
+
+impl DocError {
+    fn new(error: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            error: error.into(),
+            message: message.into(),
+        }
+    }
+}
+
+/// Get a document (returns raw Automerge bytes)
+async fn get_doc(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+    Path(doc_type): Path<String>,
+) -> Response {
+    let storage = state.storage.read().await;
+
+    match storage.load_by_name(&user.group_id, &doc_type) {
+        Ok(Some(doc)) => {
+            // Return raw bytes with appropriate content type
+            let mut doc = doc;
+            let bytes = doc.save();
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "application/octet-stream")],
+                bytes,
+            )
+                .into_response()
+        }
+        Ok(None) => {
+            // No document yet - return 404
+            (
+                StatusCode::NOT_FOUND,
+                Json(DocError::new("not_found", "Document not found")),
+            )
+                .into_response()
+        }
+        Err(ServerStorageError::InvalidDocType(t)) => (
+            StatusCode::BAD_REQUEST,
+            Json(DocError::new(
+                "invalid_doc_type",
+                format!("Invalid document type: {}", t),
+            )),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to load document: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(DocError::new("storage_error", "Failed to load document")),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Save a document (accepts raw Automerge bytes)
+async fn put_doc(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+    Path(doc_type): Path<String>,
+    body: Bytes,
+) -> Response {
+    // Validate the bytes are a valid Automerge document
+    let mut doc = match automerge::AutoCommit::load(&body) {
+        Ok(doc) => doc,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(DocError::new(
+                    "invalid_document",
+                    format!("Invalid Automerge document: {}", e),
+                )),
+            )
+                .into_response();
+        }
+    };
+
+    let storage = state.storage.write().await;
+
+    match storage.save_by_name(&user.group_id, &doc_type, &mut doc) {
+        Ok(()) => {
+            tracing::info!(
+                "Saved {} for group {} by user {}",
+                doc_type,
+                user.group_id,
+                user.user_id
+            );
+            (StatusCode::NO_CONTENT, ()).into_response()
+        }
+        Err(ServerStorageError::InvalidDocType(t)) => (
+            StatusCode::BAD_REQUEST,
+            Json(DocError::new(
+                "invalid_doc_type",
+                format!("Invalid document type: {}", t),
+            )),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("Failed to save document: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(DocError::new("storage_error", "Failed to save document")),
+            )
+                .into_response()
+        }
+    }
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -297,24 +417,24 @@ async fn main() {
     // Load API keys
     let api_keys = Arc::new(ApiKeyStore::load(&config.config_path));
 
+    // Create storage
+    let storage = Arc::new(RwLock::new(ServerStorage::new(&config.data_dir)));
+
     // Build app state
-    let state = AppState {
-        api_keys,
-        data_dir: config.data_dir,
-    };
+    let state = AppState { api_keys, storage };
 
     // Build router
     // Public routes (no auth)
     let public_routes = Router::new().route("/health", get(health));
 
     // Protected routes (auth required)
-    let protected_routes =
-        Router::new()
-            .route("/me", get(me))
-            .layer(middleware::from_fn_with_state(
-                state.clone(),
-                auth_middleware,
-            ));
+    let protected_routes = Router::new()
+        .route("/me", get(me))
+        .route("/docs/{doc_type}", get(get_doc).put(put_doc))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
 
     let app = Router::new()
         .merge(public_routes)
