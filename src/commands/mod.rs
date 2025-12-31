@@ -1,3 +1,3 @@
 mod dish;
 
-pub use dish::{DishCommand, DishSubcommand};
+pub use dish::DishCommand;

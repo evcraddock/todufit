@@ -13,8 +13,8 @@ pub struct Dish {
     pub ingredients: Vec<Ingredient>,
     pub instructions: String,
     pub nutrients: Option<Vec<Nutrient>>,
-    pub prep_time: Option<i32>,  // minutes
-    pub cook_time: Option<i32>,  // minutes
+    pub prep_time: Option<i32>, // minutes
+    pub cook_time: Option<i32>, // minutes
     pub servings: Option<i32>,
     pub tags: Vec<String>,
     pub image_url: Option<String>,
