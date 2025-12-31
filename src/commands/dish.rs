@@ -4,8 +4,8 @@ use std::io::{self, Write};
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::db::DishRepository;
 use crate::models::{Dish, Ingredient, Nutrient};
+use crate::sync::SyncDishRepository;
 
 #[derive(Clone, ValueEnum, Default)]
 pub enum OutputFormat {
@@ -192,7 +192,7 @@ fn parse_nutrients(json: &str) -> Result<Vec<Nutrient>, Box<dyn std::error::Erro
 impl DishCommand {
     pub async fn run(
         &self,
-        repo: &DishRepository,
+        repo: &SyncDishRepository,
         config: &Config,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match &self.command {

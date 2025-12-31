@@ -1,14 +1,12 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-mod commands;
-mod config;
-mod db;
-mod models;
-
-use commands::{meal::MealRepos, ConfigCommand, DishCommand, MealCommand, MealPlanCommand};
-use config::Config;
-use db::{init_db, DishRepository, MealLogRepository, MealPlanRepository};
+use todufit::commands::{
+    meal::MealRepos, ConfigCommand, DishCommand, MealCommand, MealPlanCommand,
+};
+use todufit::config::Config;
+use todufit::db::{init_db, DishRepository, MealLogRepository, MealPlanRepository};
+use todufit::sync::SyncDishRepository;
 
 #[derive(Parser)]
 #[command(name = "todufit")]
@@ -55,7 +53,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Some(Commands::Dish(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
-            let repo = DishRepository::new(pool);
+            let repo = SyncDishRepository::new(pool);
             cmd.run(&repo, &config).await?;
         }
         Some(Commands::Meal(cmd)) => {
