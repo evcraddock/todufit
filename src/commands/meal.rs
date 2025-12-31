@@ -1,5 +1,6 @@
 use chrono::{Local, NaiveDate};
 use clap::{Args, Subcommand, ValueEnum};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -222,15 +223,21 @@ impl MealCommand {
             }
             OutputFormat::Text => {
                 let mut current_date: Option<NaiveDate> = None;
+                let mut daily_nutrients: HashMap<String, f64> = HashMap::new();
 
                 for log in &logs {
-                    // Print date header when it changes
+                    // Print date header and daily totals when date changes
                     if current_date != Some(log.date) {
+                        // Print previous day's totals if we have them
+                        if current_date.is_some() && !daily_nutrients.is_empty() {
+                            print_daily_totals(&daily_nutrients);
+                            daily_nutrients.clear();
+                        }
                         if current_date.is_some() {
                             println!();
                         }
                         println!("{}", log.date);
-                        println!("{}", "-".repeat(10));
+                        println!("{}", "-".repeat(60));
                         current_date = Some(log.date);
                     }
 
@@ -251,9 +258,24 @@ impl MealCommand {
 
                     println!("  {:10} {}{}", log.meal_type, plan_indicator, dishes_str);
 
+                    // Calculate and display meal nutrients
+                    let meal_nutrients = calculate_meal_nutrients(log);
+                    if !meal_nutrients.is_empty() {
+                        println!("             {}", format_nutrients(&meal_nutrients));
+                        // Add to daily totals
+                        for (name, amount) in &meal_nutrients {
+                            *daily_nutrients.entry(name.clone()).or_insert(0.0) += amount;
+                        }
+                    }
+
                     if let Some(notes) = &log.notes {
                         println!("             Notes: {}", notes);
                     }
+                }
+
+                // Print final day's totals
+                if !daily_nutrients.is_empty() {
+                    print_daily_totals(&daily_nutrients);
                 }
 
                 println!("\nTotal: {} meal(s)", logs.len());
@@ -261,6 +283,58 @@ impl MealCommand {
         }
 
         Ok(())
+    }
+}
+
+/// Calculate total nutrients for a meal by summing all dish nutrients
+fn calculate_meal_nutrients(log: &MealLog) -> HashMap<String, f64> {
+    let mut totals: HashMap<String, f64> = HashMap::new();
+
+    for dish in &log.dishes {
+        if let Some(nutrients) = &dish.nutrients {
+            for nutrient in nutrients {
+                *totals.entry(nutrient.name.clone()).or_insert(0.0) += nutrient.amount;
+            }
+        }
+    }
+
+    totals
+}
+
+/// Format nutrients for display: "Calories: 650 | Protein: 25g | Carbs: 80g | Fat: 28g"
+fn format_nutrients(nutrients: &HashMap<String, f64>) -> String {
+    // Order: calories first, then protein, carbs, fat, then others
+    let order = ["calories", "protein", "carbs", "fat"];
+    let mut parts: Vec<String> = Vec::new();
+
+    for key in order {
+        if let Some(amount) = nutrients.get(key) {
+            let unit = if key == "calories" { "" } else { "g" };
+            parts.push(format!("{}: {:.0}{}", capitalize(key), amount, unit));
+        }
+    }
+
+    // Add any other nutrients not in the standard order
+    for (name, amount) in nutrients {
+        if !order.contains(&name.as_str()) {
+            parts.push(format!("{}: {:.0}g", capitalize(name), amount));
+        }
+    }
+
+    parts.join(" | ")
+}
+
+/// Print daily nutrient totals
+fn print_daily_totals(nutrients: &HashMap<String, f64>) {
+    println!("  {}", "-".repeat(56));
+    println!("  Daily Total: {}", format_nutrients(nutrients));
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }
 
