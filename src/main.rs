@@ -6,9 +6,9 @@ mod config;
 mod db;
 mod models;
 
-use commands::{ConfigCommand, DishCommand};
+use commands::{ConfigCommand, DishCommand, MealPlanCommand};
 use config::Config;
-use db::{init_db, DishRepository};
+use db::{init_db, DishRepository, MealPlanRepository};
 
 #[derive(Parser)]
 #[command(name = "todufit")]
@@ -27,6 +27,9 @@ struct Cli {
 enum Commands {
     /// Manage dishes (recipes)
     Dish(DishCommand),
+
+    /// Manage meal plans
+    Mealplan(MealPlanCommand),
 
     /// Manage configuration
     Config(ConfigCommand),
@@ -51,6 +54,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
             let repo = DishRepository::new(pool);
             cmd.run(&repo, &config).await?;
+        }
+        Some(Commands::Mealplan(cmd)) => {
+            let pool = init_db(Some(config.database_path.value.clone())).await?;
+            let mealplan_repo = MealPlanRepository::new(pool.clone());
+            let dish_repo = DishRepository::new(pool);
+            cmd.run(&mealplan_repo, &dish_repo, &config).await?;
         }
         Some(Commands::Config(cmd)) => {
             cmd.run(&config)?;
