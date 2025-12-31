@@ -200,12 +200,31 @@ For testing sync functionality, you can run the sync server locally:
    make dev-logs    # Tail development logs
    ```
 
-5. **Connect CLI to local server:**
-   Configure the CLI to sync with `localhost:8080` using your dev API key.
+5. **Configure CLI for sync** in `~/.config/todufit/config.yaml`:
+   ```yaml
+   sync:
+     server_url: "ws://localhost:8080"
+     api_key: "your-dev-api-key"
+     auto_sync: true  # optional: sync after every write
+   ```
+
+   Or use environment variables:
+   ```bash
+   export TODUFIT_SYNC_URL=ws://localhost:8080
+   export TODUFIT_SYNC_API_KEY=your-dev-api-key
+   ```
+
+6. **Sync commands:**
+   ```bash
+   todufit sync          # Sync all data with server
+   todufit sync status   # Show sync configuration
+   ```
+
+   With `auto_sync: true`, changes sync automatically after every write.
 
 ## Roadmap
 
-- [ ] Cross-device sync via Automerge
+- [x] Cross-device sync via Automerge
 - [ ] Ingredient-based shopping lists
 - [ ] Meal plan templates
 
