@@ -1,6 +1,7 @@
 use clap::{Args, Subcommand, ValueEnum};
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::db::DishRepository;
 use crate::models::Dish;
 
@@ -76,7 +77,11 @@ pub enum DishSubcommand {
 }
 
 impl DishCommand {
-    pub async fn run(&self, repo: &DishRepository) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(
+        &self,
+        repo: &DishRepository,
+        config: &Config,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match &self.command {
             DishSubcommand::Create {
                 name,
@@ -92,7 +97,7 @@ impl DishCommand {
                     return Err("Dish name cannot be empty".into());
                 }
 
-                let mut dish = Dish::new(name.trim(), "default");
+                let mut dish = Dish::new(name.trim(), &config.created_by);
 
                 if let Some(instructions) = instructions {
                     dish = dish.with_instructions(instructions);

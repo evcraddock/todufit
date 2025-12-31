@@ -1,16 +1,23 @@
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 mod commands;
+mod config;
 mod db;
 mod models;
 
 use commands::DishCommand;
+use config::Config;
 use db::{init_db, DishRepository};
 
 #[derive(Parser)]
 #[command(name = "todufit")]
 #[command(about = "A fitness tracking CLI application", long_about = None)]
 struct Cli {
+    /// Path to config file
+    #[arg(long, short, global = true)]
+    config: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -32,11 +39,14 @@ async fn main() {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    // Load configuration
+    let config = Config::load(cli.config)?;
+
     match cli.command {
         Some(Commands::Dish(cmd)) => {
-            let pool = init_db(None).await?;
+            let pool = init_db(Some(config.database_path.clone())).await?;
             let repo = DishRepository::new(pool);
-            cmd.run(&repo).await?;
+            cmd.run(&repo, &config).await?;
         }
         None => {
             println!("Use --help to see available commands");
