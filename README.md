@@ -11,8 +11,23 @@ Local-first meal planning and nutrition tracking CLI.
 
 ## Installation
 
+### Quick Install (Linux/macOS)
+
 ```bash
-# Clone and build
+curl -fsSL https://raw.githubusercontent.com/evcraddock/todufit/main/install.sh | bash
+```
+
+### Download Binary
+
+Pre-built binaries are available on the [releases page](https://github.com/evcraddock/todufit/releases):
+- Linux x86_64
+- macOS x86_64 (Intel)
+- macOS aarch64 (Apple Silicon)
+- Windows x86_64
+
+### Build from Source
+
+```bash
 git clone https://github.com/evcraddock/todufit.git
 cd todufit
 cargo install --path .
@@ -90,10 +105,19 @@ todufit meal history [--from <date>] [--to <date>] [--format text|json]
 todufit config show    # Show current config
 ```
 
-Config file location: `~/.config/todufit/config.yaml`
+**Config file locations (platform-specific):**
+- Linux: `~/.config/todufit/config.yaml`
+- macOS: `~/Library/Application Support/todufit/config.yaml`
+- Windows: `%APPDATA%\todufit\config.yaml`
+
+**Data directory (database):**
+- Linux: `~/.local/share/todufit/`
+- macOS: `~/Library/Application Support/todufit/`
+- Windows: `%APPDATA%\todufit\`
 
 ```yaml
-database_path: ~/.config/todufit/todufit.db
+# config.yaml
+database_path: /custom/path/todufit.db  # optional, overrides default
 created_by: your-name
 ```
 

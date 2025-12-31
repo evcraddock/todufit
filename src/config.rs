@@ -56,11 +56,7 @@ struct ConfigFile {
 impl Config {
     /// Load configuration with priority: env vars > config file > defaults
     pub fn load(config_path: Option<PathBuf>) -> Result<Self, ConfigError> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let default_db_path = PathBuf::from(&home)
-            .join(".config")
-            .join("todufit")
-            .join("todufit.db");
+        let default_db_path = Self::default_data_dir().join("todufit.db");
         let default_created_by = "default".to_string();
 
         // Start with defaults
@@ -101,13 +97,29 @@ impl Config {
         })
     }
 
-    /// Default config file path: ~/.config/todufit/config.yaml
-    pub fn default_config_path() -> PathBuf {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home)
-            .join(".config")
+    /// Default config directory (platform-specific):
+    /// - Linux: ~/.config/todufit/
+    /// - macOS: ~/Library/Application Support/todufit/
+    /// - Windows: %APPDATA%/todufit/
+    pub fn default_config_dir() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
             .join("todufit")
-            .join("config.yaml")
+    }
+
+    /// Default data directory (platform-specific):
+    /// - Linux: ~/.local/share/todufit/
+    /// - macOS: ~/Library/Application Support/todufit/
+    /// - Windows: %APPDATA%/todufit/
+    pub fn default_data_dir() -> PathBuf {
+        dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("todufit")
+    }
+
+    /// Default config file path (platform-specific config dir + config.yaml)
+    pub fn default_config_path() -> PathBuf {
+        Self::default_config_dir().join("config.yaml")
     }
 }
 
