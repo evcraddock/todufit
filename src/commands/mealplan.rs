@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{Local, NaiveDate};
 use clap::{Args, Subcommand, ValueEnum};
 use uuid::Uuid;
 
@@ -42,6 +42,25 @@ pub enum MealPlanSubcommand {
         /// Add dish by ID or name (can be repeated)
         #[arg(long = "dish", value_name = "DISH")]
         dishes: Vec<String>,
+    },
+
+    /// List meal plans
+    List {
+        /// Output format
+        #[arg(long, short, value_enum, default_value = "text")]
+        format: OutputFormat,
+
+        /// Start date (YYYY-MM-DD), defaults to today
+        #[arg(long)]
+        from: Option<String>,
+
+        /// End date (YYYY-MM-DD), defaults to 7 days from start
+        #[arg(long)]
+        to: Option<String>,
+
+        /// Filter by meal type
+        #[arg(long = "type", short = 't', value_name = "TYPE")]
+        meal_type: Option<String>,
     },
 }
 
@@ -100,6 +119,75 @@ impl MealPlanCommand {
                 let created = mealplan_repo.create(&plan).await?;
                 println!("Created meal plan:");
                 println!("{}", created);
+                Ok(())
+            }
+
+            MealPlanSubcommand::List {
+                format,
+                from,
+                to,
+                meal_type,
+            } => {
+                // Parse date range
+                let today = Local::now().date_naive();
+                let from_date = match from {
+                    Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                        .map_err(|_| format!("Invalid date format '{}'. Use YYYY-MM-DD.", d))?,
+                    None => today,
+                };
+                let to_date = match to {
+                    Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                        .map_err(|_| format!("Invalid date format '{}'. Use YYYY-MM-DD.", d))?,
+                    None => from_date + chrono::Duration::days(7),
+                };
+
+                // Parse meal type filter
+                let meal_type_filter: Option<MealType> = match meal_type {
+                    Some(mt) => Some(mt.parse().map_err(|e: String| e)?),
+                    None => None,
+                };
+
+                // Fetch meal plans
+                let mut plans = mealplan_repo.list_range(from_date, to_date).await?;
+
+                // Apply meal type filter
+                if let Some(mt) = meal_type_filter {
+                    plans.retain(|p| p.meal_type == mt);
+                }
+
+                if plans.is_empty() {
+                    println!("No meal plans found");
+                    return Ok(());
+                }
+
+                match format {
+                    OutputFormat::Json => {
+                        println!("{}", serde_json::to_string_pretty(&plans)?);
+                    }
+                    OutputFormat::Text => {
+                        let mut current_date: Option<NaiveDate> = None;
+                        for plan in &plans {
+                            if current_date != Some(plan.date) {
+                                if current_date.is_some() {
+                                    println!();
+                                }
+                                println!("{}", plan.date);
+                                println!("{}", "-".repeat(10));
+                                current_date = Some(plan.date);
+                            }
+                            let dish_count = plan.dishes.len();
+                            let dishes_str = if dish_count == 0 {
+                                "no dishes".to_string()
+                            } else if dish_count == 1 {
+                                "1 dish".to_string()
+                            } else {
+                                format!("{} dishes", dish_count)
+                            };
+                            println!("  {:10} {} ({})", plan.meal_type, plan.title, dishes_str);
+                        }
+                        println!("\nTotal: {} meal plan(s)", plans.len());
+                    }
+                }
                 Ok(())
             }
         }
