@@ -97,7 +97,7 @@ impl DishCommand {
                     return Err("Dish name cannot be empty".into());
                 }
 
-                let mut dish = Dish::new(name.trim(), &config.created_by);
+                let mut dish = Dish::new(name.trim(), &config.created_by.value);
 
                 if let Some(instructions) = instructions {
                     dish = dish.with_instructions(instructions);

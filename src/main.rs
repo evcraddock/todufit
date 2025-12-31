@@ -6,7 +6,7 @@ mod config;
 mod db;
 mod models;
 
-use commands::DishCommand;
+use commands::{ConfigCommand, DishCommand};
 use config::Config;
 use db::{init_db, DishRepository};
 
@@ -26,6 +26,9 @@ struct Cli {
 enum Commands {
     /// Manage dishes (recipes)
     Dish(DishCommand),
+
+    /// Manage configuration
+    Config(ConfigCommand),
 }
 
 #[tokio::main]
@@ -44,9 +47,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Some(Commands::Dish(cmd)) => {
-            let pool = init_db(Some(config.database_path.clone())).await?;
+            let pool = init_db(Some(config.database_path.value.clone())).await?;
             let repo = DishRepository::new(pool);
             cmd.run(&repo, &config).await?;
+        }
+        Some(Commands::Config(cmd)) => {
+            cmd.run(&config)?;
         }
         None => {
             println!("Use --help to see available commands");
