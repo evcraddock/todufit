@@ -1,10 +1,17 @@
-use chrono::NaiveDate;
-use clap::{Args, Subcommand};
+use chrono::{Local, NaiveDate};
+use clap::{Args, Subcommand, ValueEnum};
 use uuid::Uuid;
 
 use crate::config::Config;
 use crate::db::{DishRepository, MealLogRepository, MealPlanRepository};
 use crate::models::{MealLog, MealType};
+
+#[derive(Clone, ValueEnum, Default)]
+pub enum OutputFormat {
+    #[default]
+    Text,
+    Json,
+}
 
 /// Repositories needed for meal commands
 pub struct MealRepos<'a> {
@@ -42,6 +49,21 @@ pub enum MealSubcommand {
         #[arg(long)]
         notes: Option<String>,
     },
+
+    /// View meal history
+    History {
+        /// Output format
+        #[arg(long, short, value_enum, default_value = "text")]
+        format: OutputFormat,
+
+        /// Start date (YYYY-MM-DD), defaults to 7 days ago
+        #[arg(long)]
+        from: Option<String>,
+
+        /// End date (YYYY-MM-DD), defaults to today
+        #[arg(long)]
+        to: Option<String>,
+    },
 }
 
 impl MealCommand {
@@ -67,6 +89,9 @@ impl MealCommand {
                     self.log_unplanned(date, meal_type, dishes, notes, &repos, config)
                         .await
                 }
+            }
+            MealSubcommand::History { format, from, to } => {
+                self.show_history(format, from, to, &repos).await
             }
         }
     }
@@ -159,6 +184,81 @@ impl MealCommand {
         println!("Logged unplanned meal:");
         println!();
         print_log_details(&created);
+
+        Ok(())
+    }
+
+    async fn show_history(
+        &self,
+        format: &OutputFormat,
+        from: &Option<String>,
+        to: &Option<String>,
+        repos: &MealRepos<'_>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Parse date range
+        let today = Local::now().date_naive();
+        let to_date = match to {
+            Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                .map_err(|_| format!("Invalid date format '{}'. Use YYYY-MM-DD.", d))?,
+            None => today,
+        };
+        let from_date = match from {
+            Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                .map_err(|_| format!("Invalid date format '{}'. Use YYYY-MM-DD.", d))?,
+            None => to_date - chrono::Duration::days(7),
+        };
+
+        // Fetch meal logs
+        let logs = repos.meallog.list_range(from_date, to_date).await?;
+
+        if logs.is_empty() {
+            println!("No meal history found for {} to {}", from_date, to_date);
+            return Ok(());
+        }
+
+        match format {
+            OutputFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(&logs)?);
+            }
+            OutputFormat::Text => {
+                let mut current_date: Option<NaiveDate> = None;
+
+                for log in &logs {
+                    // Print date header when it changes
+                    if current_date != Some(log.date) {
+                        if current_date.is_some() {
+                            println!();
+                        }
+                        println!("{}", log.date);
+                        println!("{}", "-".repeat(10));
+                        current_date = Some(log.date);
+                    }
+
+                    // Determine if planned or unplanned
+                    let plan_indicator = if log.mealplan_id.is_some() {
+                        "(planned)"
+                    } else {
+                        "(unplanned)"
+                    };
+
+                    // Build dish summary
+                    let dishes_str = if log.dishes.is_empty() {
+                        String::new()
+                    } else {
+                        let names: Vec<&str> = log.dishes.iter().map(|d| d.name.as_str()).collect();
+                        format!(": {}", names.join(", "))
+                    };
+
+                    println!("  {:10} {}{}", log.meal_type, plan_indicator, dishes_str);
+
+                    if let Some(notes) = &log.notes {
+                        println!("             Notes: {}", notes);
+                    }
+                }
+
+                println!("\nTotal: {} meal(s)", logs.len());
+            }
+        }
 
         Ok(())
     }
