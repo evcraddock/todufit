@@ -6,15 +6,9 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-/// Get the default database path (~/.todufit/todufit.db)
-pub fn default_db_path() -> PathBuf {
-    let home = std::env::var("HOME").expect("HOME environment variable not set");
-    PathBuf::from(home).join(".todufit").join("todufit.db")
-}
-
 /// Initialize the database connection pool and run migrations
 pub async fn init_db(db_path: Option<PathBuf>) -> Result<SqlitePool, sqlx::Error> {
-    let path = db_path.unwrap_or_else(default_db_path);
+    let path = db_path.expect("database_path must be provided");
 
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
