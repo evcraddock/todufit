@@ -1,4 +1,5 @@
 use clap::{Args, Subcommand, ValueEnum};
+use std::io::{self, Write};
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -115,6 +116,16 @@ pub enum DishSubcommand {
         /// Source URL
         #[arg(long)]
         source_url: Option<String>,
+    },
+
+    /// Delete a dish
+    Delete {
+        /// Dish ID (UUID) or name
+        identifier: String,
+
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        force: bool,
     },
 }
 
@@ -316,6 +327,38 @@ impl DishCommand {
                 let updated = repo.update(&dish).await?;
                 println!("Updated dish:");
                 println!("{}", updated);
+                Ok(())
+            }
+
+            DishSubcommand::Delete { identifier, force } => {
+                // Find the dish
+                let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
+                    repo.get_by_id(uuid).await?
+                } else {
+                    repo.get_by_name(identifier).await?
+                };
+
+                let dish = match dish {
+                    Some(d) => d,
+                    None => return Err(format!("Dish not found: {}", identifier).into()),
+                };
+
+                // Confirm deletion unless --force is used
+                if !force {
+                    print!("Delete dish '{}'? [y/N] ", dish.name);
+                    io::stdout().flush()?;
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+
+                    if !input.trim().eq_ignore_ascii_case("y") {
+                        println!("Deletion cancelled.");
+                        return Ok(());
+                    }
+                }
+
+                repo.delete(dish.id).await?;
+                println!("Deleted dish: {}", dish.name);
                 Ok(())
             }
         }
