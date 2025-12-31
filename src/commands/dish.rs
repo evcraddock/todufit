@@ -74,6 +74,48 @@ pub enum DishSubcommand {
         #[arg(long, short, value_enum, default_value = "text")]
         format: OutputFormat,
     },
+
+    /// Update an existing dish
+    Update {
+        /// Dish ID (UUID) or name
+        identifier: String,
+
+        /// New name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// New instructions
+        #[arg(long)]
+        instructions: Option<String>,
+
+        /// Prep time in minutes
+        #[arg(long)]
+        prep_time: Option<i32>,
+
+        /// Cook time in minutes
+        #[arg(long)]
+        cook_time: Option<i32>,
+
+        /// Number of servings
+        #[arg(long)]
+        servings: Option<i32>,
+
+        /// Add a tag (can be repeated)
+        #[arg(long = "add-tag", value_name = "TAG")]
+        add_tags: Vec<String>,
+
+        /// Remove a tag (can be repeated)
+        #[arg(long = "remove-tag", value_name = "TAG")]
+        remove_tags: Vec<String>,
+
+        /// Image URL
+        #[arg(long)]
+        image_url: Option<String>,
+
+        /// Source URL
+        #[arg(long)]
+        source_url: Option<String>,
+    },
 }
 
 impl DishCommand {
@@ -190,6 +232,91 @@ impl DishCommand {
                     }
                     None => Err(format!("Dish not found: {}", identifier).into()),
                 }
+            }
+
+            DishSubcommand::Update {
+                identifier,
+                name,
+                instructions,
+                prep_time,
+                cook_time,
+                servings,
+                add_tags,
+                remove_tags,
+                image_url,
+                source_url,
+            } => {
+                // Check if any updates were provided
+                let has_updates = name.is_some()
+                    || instructions.is_some()
+                    || prep_time.is_some()
+                    || cook_time.is_some()
+                    || servings.is_some()
+                    || !add_tags.is_empty()
+                    || !remove_tags.is_empty()
+                    || image_url.is_some()
+                    || source_url.is_some();
+
+                if !has_updates {
+                    return Err("Nothing to update. Provide at least one option.".into());
+                }
+
+                // Find the dish
+                let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
+                    repo.get_by_id(uuid).await?
+                } else {
+                    repo.get_by_name(identifier).await?
+                };
+
+                let mut dish = match dish {
+                    Some(d) => d,
+                    None => return Err(format!("Dish not found: {}", identifier).into()),
+                };
+
+                // Apply updates
+                if let Some(new_name) = name {
+                    dish.name = new_name.clone();
+                }
+                if let Some(new_instructions) = instructions {
+                    dish.instructions = new_instructions.clone();
+                }
+                if let Some(new_prep_time) = prep_time {
+                    dish.prep_time = Some(*new_prep_time);
+                }
+                if let Some(new_cook_time) = cook_time {
+                    dish.cook_time = Some(*new_cook_time);
+                }
+                if let Some(new_servings) = servings {
+                    dish.servings = Some(*new_servings);
+                }
+                if let Some(new_image_url) = image_url {
+                    dish.image_url = Some(new_image_url.clone());
+                }
+                if let Some(new_source_url) = source_url {
+                    dish.source_url = Some(new_source_url.clone());
+                }
+
+                // Handle tag additions
+                for tag in add_tags {
+                    if !dish
+                        .tags
+                        .iter()
+                        .any(|t| t.to_lowercase() == tag.to_lowercase())
+                    {
+                        dish.tags.push(tag.clone());
+                    }
+                }
+
+                // Handle tag removals
+                for tag in remove_tags {
+                    let tag_lower = tag.to_lowercase();
+                    dish.tags.retain(|t| t.to_lowercase() != tag_lower);
+                }
+
+                let updated = repo.update(&dish).await?;
+                println!("Updated dish:");
+                println!("{}", updated);
+                Ok(())
             }
         }
     }
