@@ -1,5 +1,6 @@
 use chrono::{Local, NaiveDate};
 use clap::{Args, Subcommand, ValueEnum};
+use std::io::{self, Write};
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -97,6 +98,16 @@ pub enum MealPlanSubcommand {
         /// New cook
         #[arg(long)]
         cook: Option<String>,
+    },
+
+    /// Delete a meal plan
+    Delete {
+        /// Meal plan ID (UUID)
+        id: String,
+
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        force: bool,
     },
 }
 
@@ -336,6 +347,38 @@ impl MealPlanCommand {
                 let updated = mealplan_repo.update(&plan).await?;
                 println!("Updated meal plan:");
                 println!("{}", updated);
+                Ok(())
+            }
+
+            MealPlanSubcommand::Delete { id, force } => {
+                // Parse UUID
+                let uuid = Uuid::parse_str(id).map_err(|_| format!("Invalid UUID: {}", id))?;
+
+                // Get existing plan
+                let plan = mealplan_repo
+                    .get_by_id(uuid)
+                    .await?
+                    .ok_or_else(|| format!("Meal plan not found: {}", id))?;
+
+                // Confirm unless --force
+                if !force {
+                    print!(
+                        "Delete meal plan '{}' ({} {})? [y/N] ",
+                        plan.title, plan.meal_type, plan.date
+                    );
+                    io::stdout().flush()?;
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+
+                    if !input.trim().eq_ignore_ascii_case("y") {
+                        println!("Deletion cancelled.");
+                        return Ok(());
+                    }
+                }
+
+                mealplan_repo.delete(uuid).await?;
+                println!("Deleted meal plan: {}", plan.title);
                 Ok(())
             }
         }
