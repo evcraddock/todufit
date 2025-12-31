@@ -1,7 +1,14 @@
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 
 use crate::db::DishRepository;
 use crate::models::Dish;
+
+#[derive(Clone, ValueEnum, Default)]
+pub enum OutputFormat {
+    #[default]
+    Text,
+    Json,
+}
 
 #[derive(Args)]
 pub struct DishCommand {
@@ -43,6 +50,17 @@ pub enum DishSubcommand {
         /// Recipe source URL
         #[arg(long)]
         source_url: Option<String>,
+    },
+
+    /// List all dishes
+    List {
+        /// Output format
+        #[arg(long, short, value_enum, default_value = "text")]
+        format: OutputFormat,
+
+        /// Filter by tag
+        #[arg(long = "tag", value_name = "TAG")]
+        tag: Option<String>,
     },
 }
 
@@ -90,6 +108,50 @@ impl DishCommand {
                 let created = repo.create(&dish).await?;
                 println!("Created dish:");
                 println!("{}", created);
+                Ok(())
+            }
+
+            DishSubcommand::List { format, tag } => {
+                let dishes = repo.list().await?;
+
+                // Filter by tag if specified
+                let dishes: Vec<_> = if let Some(tag) = tag {
+                    let tag_lower = tag.to_lowercase();
+                    dishes
+                        .into_iter()
+                        .filter(|d| d.tags.iter().any(|t| t.to_lowercase() == tag_lower))
+                        .collect()
+                } else {
+                    dishes
+                };
+
+                if dishes.is_empty() {
+                    println!("No dishes found");
+                    return Ok(());
+                }
+
+                match format {
+                    OutputFormat::Json => {
+                        println!("{}", serde_json::to_string_pretty(&dishes)?);
+                    }
+                    OutputFormat::Text => {
+                        println!(
+                            "{:<36}  {:<30}  {}",
+                            "ID", "NAME", "TAGS"
+                        );
+                        println!("{}", "-".repeat(80));
+                        for dish in &dishes {
+                            let tags = dish.tags.join(", ");
+                            let name = if dish.name.len() > 30 {
+                                format!("{}...", &dish.name[..27])
+                            } else {
+                                dish.name.clone()
+                            };
+                            println!("{:<36}  {:<30}  {}", dish.id, name, tags);
+                        }
+                        println!("\nTotal: {} dish(es)", dishes.len());
+                    }
+                }
                 Ok(())
             }
         }
