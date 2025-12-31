@@ -109,6 +109,24 @@ pub enum MealPlanSubcommand {
         #[arg(long, short)]
         force: bool,
     },
+
+    /// Add a dish to a meal plan
+    AddDish {
+        /// Meal plan ID (UUID)
+        plan_id: String,
+
+        /// Dish ID (UUID) or name
+        dish: String,
+    },
+
+    /// Remove a dish from a meal plan
+    RemoveDish {
+        /// Meal plan ID (UUID)
+        plan_id: String,
+
+        /// Dish ID (UUID) or name
+        dish: String,
+    },
 }
 
 impl MealPlanCommand {
@@ -379,6 +397,76 @@ impl MealPlanCommand {
 
                 mealplan_repo.delete(uuid).await?;
                 println!("Deleted meal plan: {}", plan.title);
+                Ok(())
+            }
+
+            MealPlanSubcommand::AddDish { plan_id, dish } => {
+                // Parse plan UUID
+                let plan_uuid = Uuid::parse_str(plan_id)
+                    .map_err(|_| format!("Invalid plan UUID: {}", plan_id))?;
+
+                // Get plan
+                let plan = mealplan_repo
+                    .get_by_id(plan_uuid)
+                    .await?
+                    .ok_or_else(|| format!("Meal plan not found: {}", plan_id))?;
+
+                // Resolve dish
+                let resolved_dish = if let Ok(uuid) = Uuid::parse_str(dish) {
+                    dish_repo.get_by_id(uuid).await?
+                } else {
+                    dish_repo.get_by_name(dish).await?
+                };
+
+                let resolved_dish =
+                    resolved_dish.ok_or_else(|| format!("Dish not found: {}", dish))?;
+
+                // Check if already in plan
+                if plan.dishes.iter().any(|d| d.id == resolved_dish.id) {
+                    return Err(format!(
+                        "Dish '{}' is already in this meal plan",
+                        resolved_dish.name
+                    )
+                    .into());
+                }
+
+                mealplan_repo.add_dish(plan_uuid, resolved_dish.id).await?;
+                println!("Added '{}' to '{}'", resolved_dish.name, plan.title);
+                Ok(())
+            }
+
+            MealPlanSubcommand::RemoveDish { plan_id, dish } => {
+                // Parse plan UUID
+                let plan_uuid = Uuid::parse_str(plan_id)
+                    .map_err(|_| format!("Invalid plan UUID: {}", plan_id))?;
+
+                // Get plan
+                let plan = mealplan_repo
+                    .get_by_id(plan_uuid)
+                    .await?
+                    .ok_or_else(|| format!("Meal plan not found: {}", plan_id))?;
+
+                // Resolve dish
+                let resolved_dish = if let Ok(uuid) = Uuid::parse_str(dish) {
+                    dish_repo.get_by_id(uuid).await?
+                } else {
+                    dish_repo.get_by_name(dish).await?
+                };
+
+                let resolved_dish =
+                    resolved_dish.ok_or_else(|| format!("Dish not found: {}", dish))?;
+
+                // Check if in plan
+                if !plan.dishes.iter().any(|d| d.id == resolved_dish.id) {
+                    return Err(
+                        format!("Dish '{}' is not in this meal plan", resolved_dish.name).into(),
+                    );
+                }
+
+                mealplan_repo
+                    .remove_dish(plan_uuid, resolved_dish.id)
+                    .await?;
+                println!("Removed '{}' from '{}'", resolved_dish.name, plan.title);
                 Ok(())
             }
         }
