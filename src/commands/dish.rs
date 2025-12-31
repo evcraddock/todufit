@@ -1,10 +1,11 @@
 use clap::{Args, Subcommand, ValueEnum};
+use std::collections::HashMap;
 use std::io::{self, Write};
 use uuid::Uuid;
 
 use crate::config::Config;
 use crate::db::DishRepository;
-use crate::models::{Dish, Ingredient};
+use crate::models::{Dish, Ingredient, Nutrient};
 
 #[derive(Clone, ValueEnum, Default)]
 pub enum OutputFormat {
@@ -53,6 +54,11 @@ pub enum DishSubcommand {
         /// Recipe source URL
         #[arg(long)]
         source_url: Option<String>,
+
+        /// Nutrients as JSON: '{"calories": 650, "protein": 25, "carbs": 80, "fat": 28}'
+        /// Units: kcal for calories, grams for all others
+        #[arg(long, value_name = "JSON")]
+        nutrients: Option<String>,
     },
 
     /// List all dishes
@@ -116,6 +122,11 @@ pub enum DishSubcommand {
         /// Source URL
         #[arg(long)]
         source_url: Option<String>,
+
+        /// Nutrients as JSON: '{"calories": 650, "protein": 25, "carbs": 80, "fat": 28}'
+        /// Units: kcal for calories, grams for all others. Replaces existing nutrients.
+        #[arg(long, value_name = "JSON")]
+        nutrients: Option<String>,
     },
 
     /// Delete a dish
@@ -157,6 +168,27 @@ pub enum DishSubcommand {
     },
 }
 
+/// Parse nutrients from JSON string like '{"calories": 650, "protein": 25}'
+/// Returns Vec<Nutrient> with appropriate units (kcal for calories, g for others)
+fn parse_nutrients(json: &str) -> Result<Vec<Nutrient>, Box<dyn std::error::Error>> {
+    let map: HashMap<String, f64> = serde_json::from_str(json)
+        .map_err(|e| format!("Invalid nutrients JSON: {}. Expected format: '{{\"calories\": 650, \"protein\": 25, \"carbs\": 80, \"fat\": 28}}'", e))?;
+
+    let nutrients = map
+        .into_iter()
+        .map(|(name, amount)| {
+            let unit = if name.to_lowercase() == "calories" {
+                "kcal"
+            } else {
+                "g"
+            };
+            Nutrient::new(name, amount, unit)
+        })
+        .collect();
+
+    Ok(nutrients)
+}
+
 impl DishCommand {
     pub async fn run(
         &self,
@@ -173,6 +205,7 @@ impl DishCommand {
                 tags,
                 image_url,
                 source_url,
+                nutrients,
             } => {
                 if name.trim().is_empty() {
                     return Err("Dish name cannot be empty".into());
@@ -200,6 +233,10 @@ impl DishCommand {
                 }
                 if source_url.is_some() {
                     dish.source_url = source_url.clone();
+                }
+                if let Some(nutrients_json) = nutrients {
+                    let parsed = parse_nutrients(nutrients_json)?;
+                    dish = dish.with_nutrients(parsed);
                 }
 
                 let created = repo.create(&dish).await?;
@@ -284,6 +321,7 @@ impl DishCommand {
                 remove_tags,
                 image_url,
                 source_url,
+                nutrients,
             } => {
                 // Check if any updates were provided
                 let has_updates = name.is_some()
@@ -294,7 +332,8 @@ impl DishCommand {
                     || !add_tags.is_empty()
                     || !remove_tags.is_empty()
                     || image_url.is_some()
-                    || source_url.is_some();
+                    || source_url.is_some()
+                    || nutrients.is_some();
 
                 if !has_updates {
                     return Err("Nothing to update. Provide at least one option.".into());
@@ -350,6 +389,12 @@ impl DishCommand {
                 for tag in remove_tags {
                     let tag_lower = tag.to_lowercase();
                     dish.tags.retain(|t| t.to_lowercase() != tag_lower);
+                }
+
+                // Handle nutrients (replaces existing)
+                if let Some(nutrients_json) = nutrients {
+                    let parsed = parse_nutrients(nutrients_json)?;
+                    dish.nutrients = Some(parsed);
                 }
 
                 let updated = repo.update(&dish).await?;
