@@ -62,6 +62,20 @@ pub enum MealPlanSubcommand {
         #[arg(long = "type", short = 't', value_name = "TYPE")]
         meal_type: Option<String>,
     },
+
+    /// Show meal plan details
+    Show {
+        /// Meal plan ID (UUID) or date (YYYY-MM-DD)
+        identifier: String,
+
+        /// Output format
+        #[arg(long, short, value_enum, default_value = "text")]
+        format: OutputFormat,
+
+        /// Meal type (required if date has multiple plans)
+        #[arg(long = "type", short = 't', value_name = "TYPE")]
+        meal_type: Option<String>,
+    },
 }
 
 impl MealPlanCommand {
@@ -186,6 +200,73 @@ impl MealPlanCommand {
                             println!("  {:10} {} ({})", plan.meal_type, plan.title, dishes_str);
                         }
                         println!("\nTotal: {} meal plan(s)", plans.len());
+                    }
+                }
+                Ok(())
+            }
+
+            MealPlanSubcommand::Show {
+                identifier,
+                format,
+                meal_type,
+            } => {
+                // Try to parse as UUID first
+                let plans: Vec<MealPlan> = if let Ok(uuid) = Uuid::parse_str(identifier) {
+                    match mealplan_repo.get_by_id(uuid).await? {
+                        Some(plan) => vec![plan],
+                        None => vec![],
+                    }
+                } else if let Ok(date) = NaiveDate::parse_from_str(identifier, "%Y-%m-%d") {
+                    // It's a date - get plans for that date
+                    let mut plans = mealplan_repo.get_by_date(date).await?;
+
+                    // Filter by meal type if provided
+                    if let Some(mt) = meal_type {
+                        let meal_type_filter: MealType = mt.parse().map_err(|e: String| e)?;
+                        plans.retain(|p| p.meal_type == meal_type_filter);
+                    }
+                    plans
+                } else {
+                    return Err(format!(
+                        "Invalid identifier '{}'. Use UUID or date (YYYY-MM-DD).",
+                        identifier
+                    )
+                    .into());
+                };
+
+                if plans.is_empty() {
+                    return Err(format!("Meal plan not found: {}", identifier).into());
+                }
+
+                match format {
+                    OutputFormat::Json => {
+                        if plans.len() == 1 {
+                            println!("{}", serde_json::to_string_pretty(&plans[0])?);
+                        } else {
+                            println!("{}", serde_json::to_string_pretty(&plans)?);
+                        }
+                    }
+                    OutputFormat::Text => {
+                        for (i, plan) in plans.iter().enumerate() {
+                            if i > 0 {
+                                println!("\n{}\n", "=".repeat(40));
+                            }
+                            println!("{}", plan);
+
+                            // Show dish details
+                            if !plan.dishes.is_empty() {
+                                for dish in &plan.dishes {
+                                    println!("\n  {}", dish.name);
+                                    println!("  {}", "-".repeat(dish.name.len()));
+                                    if !dish.ingredients.is_empty() {
+                                        println!("  Ingredients:");
+                                        for ing in &dish.ingredients {
+                                            println!("    - {}", ing);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Ok(())
