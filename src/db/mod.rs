@@ -1,3 +1,7 @@
+mod dish_repo;
+
+pub use dish_repo::DishRepository;
+
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::PathBuf;
 use std::str::FromStr;
