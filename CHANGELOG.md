@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-01-01
+
+### Added
+
+- **Magic link authentication** - Secure email-based login for CLI users
+  - `todufit auth login` - Request magic link via email
+  - `todufit auth logout` - Remove API key from config
+  - `todufit auth status` - Show authentication status
+- **User management** (`todufit-admin`)
+  - Users stored in `users.automerge` file
+  - `todufit-admin user add` - Register email with group
+  - `todufit-admin user list` - List registered users
+  - `todufit-admin user remove` - Remove user
+- **Server auth endpoints**
+  - `POST /auth/login` - Request magic link
+  - `GET /auth/verify` - Verify token and issue API key
+- **SMTP email sending** for magic links
+
+### Configuration
+
+New auth config options for server (`~/.config/todufit-server/config.yaml`):
+```yaml
+auth:
+  smtp_host: smtp.example.com
+  smtp_port: 587
+  smtp_user: noreply@example.com
+  smtp_pass: secret
+  from_email: noreply@example.com
+  from_name: ToduFit
+  server_url: https://sync.example.com
+  token_expiry_minutes: 10
+```
+
+Static API keys still supported for development.
+
 ## [0.7.0] - 2025-12-31
 
 ### Added
