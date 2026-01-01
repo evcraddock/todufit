@@ -312,14 +312,17 @@ async fn auth_middleware(
             request.extensions_mut().insert(user);
             next.run(request).await
         }
-        None => (
-            StatusCode::UNAUTHORIZED,
-            Json(AuthError {
-                error: "invalid_key",
-                message: "Invalid API key",
-            }),
-        )
-            .into_response(),
+        None => {
+            tracing::warn!("HTTP auth failed: invalid API key");
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(AuthError {
+                    error: "invalid_key",
+                    message: "Invalid API key",
+                }),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -678,6 +681,10 @@ async fn sync_handler(
     let user = match state.api_keys.validate(&query.key).await {
         Some(user) => user,
         None => {
+            tracing::warn!(
+                "WebSocket auth failed for {}: invalid API key",
+                doc_type_str
+            );
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(AuthError {
@@ -719,8 +726,8 @@ async fn sync_handler(
 async fn handle_sync_socket(socket: WebSocket, state: AppState, user: AuthUser, doc_type: DocType) {
     let (mut sender, mut receiver) = socket.split();
 
-    // Create client sync manager
-    let client_sync = ClientSync::new(
+    // Create client sync manager (mutable to maintain sync state)
+    let mut client_sync = ClientSync::new(
         state.storage.clone(),
         state.sync_hub.clone(),
         user.group_id.clone(),
@@ -803,7 +810,7 @@ async fn handle_sync_socket(socket: WebSocket, state: AppState, user: AuthUser, 
                         match client_sync.sync_document(doc_type, None).await {
                             Ok(Some(msg)) => {
                                 if let Err(e) = sender.send(Message::Binary(msg.into())).await {
-                                    tracing::error!("Failed to send broadcast sync: {}", e);
+                                    tracing::debug!("Client disconnected during broadcast: {}", e);
                                     break;
                                 }
                             }

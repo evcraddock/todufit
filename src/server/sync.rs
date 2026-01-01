@@ -151,11 +151,15 @@ impl Default for SyncHub {
 }
 
 /// Manages sync operations for a connected client.
+///
+/// Maintains sync state across the WebSocket session.
 pub struct ClientSync {
     storage: Arc<RwLock<ServerStorage>>,
     hub: Arc<SyncHub>,
     group_id: String,
     user_id: String,
+    /// Sync state maintained across the session
+    sync_state: sync::State,
 }
 
 impl ClientSync {
@@ -171,14 +175,15 @@ impl ClientSync {
             hub,
             group_id,
             user_id,
+            sync_state: sync::State::new(),
         }
     }
 
-    /// Performs a full sync for a document type.
+    /// Performs a sync round for a document type.
     ///
-    /// Returns sync messages to send to the client.
+    /// Returns sync message to send to the client, if any.
     pub async fn sync_document(
-        &self,
+        &mut self,
         doc_type: DocType,
         client_message: Option<&[u8]>,
     ) -> Result<Option<Vec<u8>>, SyncError> {
@@ -190,22 +195,37 @@ impl ClientSync {
             .map_err(|e| SyncError::StorageError(e.to_string()))?
             .unwrap_or_else(AutoCommit::new);
 
-        let mut session = SyncSession::new();
+        let doc_heads = doc.get_heads().len();
+        tracing::debug!(
+            "sync_document for {}/{:?}: doc has {} heads, client_message={}",
+            self.group_id,
+            doc_type,
+            doc_heads,
+            client_message.is_some()
+        );
 
         // If client sent a message, apply it
-        if let Some(msg) = client_message {
-            session.receive_sync_message(&mut doc, msg)?;
+        if let Some(msg_bytes) = client_message {
+            tracing::debug!("Received {} bytes from client", msg_bytes.len());
+
+            let msg = sync::Message::decode(msg_bytes)
+                .map_err(|e| SyncError::DecodeError(e.to_string()))?;
+
+            doc.sync()
+                .receive_sync_message(&mut self.sync_state, msg)
+                .map_err(|e| SyncError::SyncError(e.to_string()))?;
 
             // Save the updated document
             storage
                 .save(&self.group_id, doc_type, &mut doc)
                 .map_err(|e| SyncError::StorageError(e.to_string()))?;
 
-            tracing::info!(
-                "Received sync from {} for {}/{:?}",
+            tracing::debug!(
+                "Applied sync from {} for {}/{:?}, doc now has {} heads",
                 self.user_id,
                 self.group_id,
-                doc_type
+                doc_type,
+                doc.get_heads().len()
             );
 
             // Broadcast update to other clients
@@ -215,7 +235,19 @@ impl ClientSync {
         }
 
         // Generate response message
-        Ok(session.generate_sync_message(&mut doc))
+        let response = doc
+            .sync()
+            .generate_sync_message(&mut self.sync_state)
+            .map(|msg| msg.encode());
+
+        tracing::debug!(
+            "Generated response for {}/{:?}: {} bytes",
+            self.group_id,
+            doc_type,
+            response.as_ref().map(|r| r.len()).unwrap_or(0)
+        );
+
+        Ok(response)
     }
 }
 
