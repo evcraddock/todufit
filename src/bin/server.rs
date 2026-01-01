@@ -13,15 +13,28 @@
 //! # Config File Format
 //!
 //! ```yaml
-//! api_keys:
-//!   - key: "your-secret-key-here"
-//!     user_id: "user1"
-//!     group_id: "family1"
+//! auth:
+//!   token_expiry_minutes: 10
+//!   smtp_host: smtp.example.com
+//!   smtp_port: 587
+//!   smtp_user: user
+//!   smtp_pass: password
+//!   from_email: noreply@example.com
+//!   from_name: ToduFit
+//!   server_url: https://sync.example.com
 //! ```
+//!
+//! # Authentication
+//!
+//! Users are registered via `todufit-admin user add`. API keys are generated
+//! via magic link authentication (email with one-time login link). Keys are
+//! stored as SHA256 hashes in `users.automerge` and persist across server restarts.
 //!
 //! # Endpoints
 //!
 //! - `GET /health`: Health check endpoint (no auth required)
+//! - `POST /auth/login`: Request magic link (no auth required)
+//! - `GET /auth/verify`: Verify magic link token (no auth required)
 //! - `GET /me`: Returns current user info (auth required)
 //! - `GET /docs/:doc_type`: Get document bytes (auth required)
 //! - `PUT /docs/:doc_type`: Save document bytes (auth required)
@@ -41,13 +54,12 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use todufit::server::{
-    ClientSync, DocType, EmailConfig, EmailSender, ServerStorage, ServerStorageError, SyncHub,
-    TokenStore, UserStore,
+    AuthUser, ClientSync, DocType, EmailConfig, EmailSender, ServerStorage, ServerStorageError,
+    SyncHub, TokenStore, UserStore,
 };
 use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
@@ -56,14 +68,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 // ============================================================================
 // Configuration
 // ============================================================================
-
-/// API key entry in config
-#[derive(Debug, Clone, Deserialize)]
-struct ApiKeyEntry {
-    key: String,
-    user_id: String,
-    group_id: String,
-}
 
 /// Auth configuration in config file
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -102,8 +106,6 @@ fn default_from_name() -> String {
 /// Config file structure
 #[derive(Debug, Clone, Deserialize, Default)]
 struct ConfigFile {
-    #[serde(default)]
-    api_keys: Vec<ApiKeyEntry>,
     #[serde(default)]
     auth: AuthConfigFile,
 }
@@ -184,76 +186,9 @@ impl Config {
 // Authentication
 // ============================================================================
 
-/// Authenticated user info, added to request extensions after auth
-#[derive(Debug, Clone)]
-pub struct AuthUser {
-    pub user_id: String,
-    pub group_id: String,
-}
-
-/// API key store - maps key -> AuthUser
-///
-/// Thread-safe via internal RwLock to support dynamic key addition.
-#[derive(Debug)]
-struct ApiKeyStore {
-    keys: RwLock<HashMap<String, AuthUser>>,
-}
-
-impl ApiKeyStore {
-    /// Load API keys from config file
-    fn load(config_path: &PathBuf) -> Self {
-        let keys = match std::fs::read_to_string(config_path) {
-            Ok(contents) => match serde_yaml::from_str::<ConfigFile>(&contents) {
-                Ok(config) => {
-                    let mut map = HashMap::new();
-                    for entry in config.api_keys {
-                        map.insert(
-                            entry.key,
-                            AuthUser {
-                                user_id: entry.user_id,
-                                group_id: entry.group_id,
-                            },
-                        );
-                    }
-                    tracing::info!("Loaded {} API key(s) from config", map.len());
-                    map
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse config file: {}", e);
-                    HashMap::new()
-                }
-            },
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to read config file {}: {}",
-                    config_path.display(),
-                    e
-                );
-                tracing::warn!("No API keys loaded - all authenticated requests will fail");
-                HashMap::new()
-            }
-        };
-
-        Self {
-            keys: RwLock::new(keys),
-        }
-    }
-
-    /// Validate an API key and return the associated user
-    async fn validate(&self, key: &str) -> Option<AuthUser> {
-        self.keys.read().await.get(key).cloned()
-    }
-
-    /// Add a new API key for a user
-    async fn add_key(&self, key: String, user: AuthUser) {
-        self.keys.write().await.insert(key, user);
-    }
-}
-
 /// Application state shared across handlers
 #[derive(Clone)]
 struct AppState {
-    api_keys: Arc<ApiKeyStore>,
     user_store: Arc<RwLock<UserStore>>,
     token_store: Arc<TokenStore>,
     email_sender: Option<Arc<EmailSender>>,
@@ -306,10 +241,12 @@ async fn auth_middleware(
     };
 
     // Validate API key
-    match state.api_keys.validate(api_key).await {
-        Some(user) => {
+    let user_store = state.user_store.read().await;
+    match user_store.validate_api_key(api_key) {
+        Some(auth_user) => {
+            drop(user_store);
             // Add user info to request extensions
-            request.extensions_mut().insert(user);
+            request.extensions_mut().insert(auth_user);
             next.run(request).await
         }
         None => {
@@ -597,10 +534,13 @@ async fn auth_verify(State(state): State<AppState>, Query(query): Query<VerifyQu
         }
     };
 
-    // Look up user to get group_id
-    let user_store = state.user_store.read().await;
-    let user = match user_store.get_user(&token_data.email) {
-        Some(u) => u.clone(),
+    // Generate new API key
+    let api_key = generate_api_key();
+
+    // Store the key (hashed) persistently
+    let mut user_store = state.user_store.write().await;
+    let group_id = match user_store.get_user(&token_data.email) {
+        Some(u) => u.group_id.clone(),
         None => {
             return Html(
                 r#"<!DOCTYPE html>
@@ -615,27 +555,27 @@ async fn auth_verify(State(state): State<AppState>, Query(query): Query<VerifyQu
             .into_response();
         }
     };
-    drop(user_store);
 
-    // Generate new API key
-    let api_key = generate_api_key();
-
-    // Store the key
-    state
-        .api_keys
-        .add_key(
-            api_key.clone(),
-            AuthUser {
-                user_id: token_data.email.clone(),
-                group_id: user.group_id.clone(),
-            },
+    if let Err(e) = user_store.add_api_key(&token_data.email, &api_key) {
+        tracing::error!("Failed to save API key: {}", e);
+        return Html(
+            r#"<!DOCTYPE html>
+<html>
+<head><title>ToduFit - Error</title></head>
+<body>
+<h1>Error</h1>
+<p>Failed to generate API key. Please try again.</p>
+</body>
+</html>"#,
         )
-        .await;
+        .into_response();
+    }
+    drop(user_store);
 
     tracing::info!(
         "Generated API key for {} (group: {})",
         token_data.email,
-        user.group_id
+        group_id
     );
 
     // Redirect to callback with key
@@ -678,7 +618,8 @@ async fn sync_handler(
     ws: WebSocketUpgrade,
 ) -> Response {
     // Validate API key
-    let user = match state.api_keys.validate(&query.key).await {
+    let user_store = state.user_store.read().await;
+    let auth_user = match user_store.validate_api_key(&query.key) {
         Some(user) => user,
         None => {
             tracing::warn!(
@@ -695,6 +636,7 @@ async fn sync_handler(
                 .into_response();
         }
     };
+    drop(user_store);
 
     // Validate document type
     let doc_type = match DocType::parse(&doc_type_str) {
@@ -713,13 +655,13 @@ async fn sync_handler(
 
     tracing::info!(
         "WebSocket sync connection from {} for {}/{:?}",
-        user.user_id,
-        user.group_id,
+        auth_user.user_id,
+        auth_user.group_id,
         doc_type
     );
 
     // Upgrade to WebSocket
-    ws.on_upgrade(move |socket| handle_sync_socket(socket, state, user, doc_type))
+    ws.on_upgrade(move |socket| handle_sync_socket(socket, state, auth_user, doc_type))
 }
 
 /// Handle WebSocket sync connection
@@ -865,10 +807,7 @@ async fn main() {
     tracing::info!("Data directory: {}", config.data_dir.display());
     tracing::info!("Config file: {}", config.config_path.display());
 
-    // Load API keys
-    let api_keys = Arc::new(ApiKeyStore::load(&config.config_path));
-
-    // Load user store from users.automerge
+    // Load user store from users.automerge (includes API key hashes)
     let user_store = Arc::new(RwLock::new(UserStore::load(&config.data_dir)));
 
     // Create token store
@@ -890,7 +829,6 @@ async fn main() {
 
     // Build app state
     let state = AppState {
-        api_keys,
         user_store,
         token_store,
         email_sender,
