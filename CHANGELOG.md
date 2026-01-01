@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-01-01
+
+### Changed
+
+- **Sync server extracted** - The sync server has been moved to a standalone repository:
+  [todu-sync](https://github.com/evcraddock/todu-sync). This makes the server
+  reusable by other applications and simplifies todufit's dependencies.
+
+### Removed
+
+- `todufit-server` binary (now `todu-sync` in separate repo)
+- `todufit-admin` binary (now `todu-sync-admin` in separate repo)
+- Server-only dependencies: `lettre`, `sha2`, `tower`, `tower-http`
+
+### Migration
+
+If you were running the embedded sync server, switch to [todu-sync](https://github.com/evcraddock/todu-sync):
+
+```bash
+# Install todu-sync
+cargo install --git https://github.com/evcraddock/todu-sync
+
+# Run the server
+todu-sync
+```
+
+Your existing `users.automerge` and data files are compatible.
+
 ## [0.8.0] - 2026-01-01
 
 ### Added
@@ -10,46 +38,15 @@ All notable changes to this project will be documented in this file.
   - `todufit auth login` - Request magic link via email
   - `todufit auth logout` - Remove API key from config
   - `todufit auth status` - Show authentication status
-- **User management** (`todufit-admin`)
-  - Users stored in `users.automerge` file
-  - `todufit-admin user add` - Register email with group
-  - `todufit-admin user list` - List registered users
-  - `todufit-admin user remove` - Remove user
-- **Server auth endpoints**
-  - `POST /auth/login` - Request magic link
-  - `GET /auth/verify` - Verify token and issue API key
-- **SMTP email sending** for magic links
-
-### Configuration
-
-New auth config options for server (`~/.config/todufit-server/config.yaml`):
-```yaml
-auth:
-  smtp_host: smtp.example.com
-  smtp_port: 587
-  smtp_user: noreply@example.com
-  smtp_pass: secret
-  from_email: noreply@example.com
-  from_name: ToduFit
-  server_url: https://sync.example.com
-  token_expiry_minutes: 10
-```
-
-Static API keys still supported for development.
 
 ## [0.7.0] - 2025-12-31
 
 ### Added
 
-- **Sync server** (`todufit-server`) - WebSocket server for multi-device sync
-  - API key authentication with user/group support
-  - Server-side Automerge document storage
-  - Real-time sync via WebSocket
 - **Sync CLI** - `todufit sync` command for bidirectional sync
   - `todufit sync` - Sync all data with server
   - `todufit sync status` - Show sync configuration
 - **Auto-sync** - Optional automatic sync after every write (`auto_sync: true`)
-- **Dev environment** - `make dev` runs local sync server via Procfile
 
 ### Configuration
 

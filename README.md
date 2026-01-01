@@ -8,6 +8,7 @@ Local-first meal planning and nutrition tracking CLI.
 - **Meal planning** - Plan meals by date and meal type (breakfast, lunch, dinner, snack)
 - **Meal logging** - Track what you actually ate, from plans or unplanned meals
 - **Nutrition tracking** - View per-meal and daily nutrient totals (calories, protein, carbs, fat)
+- **Cross-device sync** - Sync data across devices via [todu-sync](https://github.com/evcraddock/todu-sync) server
 
 ## Installation
 
@@ -99,6 +100,27 @@ todufit meal log --date <YYYY-MM-DD> --type <type> [--dish <name>]... [--notes <
 todufit meal history [--from <date>] [--to <date>] [--format text|json]
 ```
 
+### Sync
+
+Cross-device sync is provided by [todu-sync](https://github.com/evcraddock/todu-sync), a standalone Automerge sync server.
+
+```bash
+todufit auth login    # Authenticate with sync server (magic link)
+todufit auth logout   # Remove API key
+todufit auth status   # Show authentication status
+todufit sync          # Sync all data with server
+todufit sync status   # Show sync configuration
+```
+
+**Configure sync** in `~/.config/todufit/config.yaml`:
+```yaml
+sync:
+  server_url: "ws://your-sync-server:8080"
+  auto_sync: true  # optional: sync after every write
+```
+
+The `api_key` is automatically saved after `todufit auth login`.
+
 ### Configuration
 
 ```bash
@@ -160,8 +182,6 @@ Total: 2 meal(s)
 
 ## Development
 
-### Quick Commands
-
 ```bash
 make build           # Build debug binary
 make test            # Run tests
@@ -170,57 +190,29 @@ make lint            # Run clippy + format check
 make run ARGS="..."  # Run CLI with arguments
 ```
 
-### Development Environment with Sync Server
+## Architecture
 
-For testing sync functionality, you can run the sync server locally:
+```
+┌─────────────────────────────────────────────┐
+│              todufit CLI                     │
+│                                             │
+│  ┌─────────────┐      ┌─────────────────┐  │
+│  │  Automerge  │─────▶│     SQLite      │  │
+│  │   (sync)    │      │   (queries)     │  │
+│  └─────────────┘      └─────────────────┘  │
+│         │                                   │
+└─────────│───────────────────────────────────┘
+          │ WebSocket sync
+          ▼
+   ┌─────────────┐
+   │  todu-sync  │  (separate deployment)
+   │   server    │
+   └─────────────┘
+```
 
-1. **Set up environment:**
-   ```bash
-   cp .env.example .env
-   cp config/server.yaml.example config/server.yaml
-   ```
-
-2. **Configure API key** in `config/server.yaml`:
-   ```yaml
-   api_keys:
-     - key: "your-dev-api-key"
-       user_id: "dev"
-       group_id: "default"
-   ```
-
-3. **Start the development environment:**
-   ```bash
-   make dev
-   ```
-   This starts the sync server on the configured port (default: 8080).
-
-4. **Other dev commands:**
-   ```bash
-   make dev-stop    # Stop the development environment
-   make dev-logs    # Tail development logs
-   ```
-
-5. **Configure CLI for sync** in `~/.config/todufit/config.yaml`:
-   ```yaml
-   sync:
-     server_url: "ws://localhost:8080"
-     api_key: "your-dev-api-key"
-     auto_sync: true  # optional: sync after every write
-   ```
-
-   Or use environment variables:
-   ```bash
-   export TODUFIT_SYNC_URL=ws://localhost:8080
-   export TODUFIT_SYNC_API_KEY=your-dev-api-key
-   ```
-
-6. **Sync commands:**
-   ```bash
-   todufit sync          # Sync all data with server
-   todufit sync status   # Show sync configuration
-   ```
-
-   With `auto_sync: true`, changes sync automatically after every write.
+- **Automerge** is the source of truth for sync (CRDT)
+- **SQLite** is a local projection for fast queries
+- **todu-sync** is a standalone sync server (see [todu-sync](https://github.com/evcraddock/todu-sync))
 
 ## Roadmap
 
