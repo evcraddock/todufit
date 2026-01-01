@@ -2,7 +2,8 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use todufit::commands::{
-    meal::MealRepos, ConfigCommand, DishCommand, MealCommand, MealPlanCommand, SyncCommand,
+    meal::MealRepos, AuthCommand, ConfigCommand, DishCommand, MealCommand, MealPlanCommand,
+    SyncCommand,
 };
 use todufit::config::Config;
 use todufit::db::{init_db, DishRepository};
@@ -25,6 +26,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Authenticate with the sync server
+    Auth(AuthCommand),
+
     /// Manage dishes (recipes)
     Dish(DishCommand),
 
@@ -60,6 +64,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut pool_for_sync = None;
 
     match cli.command {
+        Some(Commands::Auth(cmd)) => {
+            cmd.run(&config).await?;
+        }
         Some(Commands::Dish(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
             let repo = SyncDishRepository::new(pool.clone());
