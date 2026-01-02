@@ -42,8 +42,8 @@ impl DocType {
 ///
 /// # Example
 ///
-/// ```no_run
-/// use todufit::sync::storage::{DocumentStorage, DocType};
+/// ```ignore
+/// use crate::sync::storage::{DocumentStorage, DocType};
 /// use automerge::AutoCommit;
 ///
 /// let storage = DocumentStorage::new();

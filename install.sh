@@ -1,10 +1,10 @@
 #!/bin/bash
-# todufit installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/evcraddock/todufit/main/install.sh | bash
+# Todu Fit installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/evcraddock/todu-fit/main/install.sh | bash
 
 set -e
 
-REPO="evcraddock/todufit"
+REPO="evcraddock/todu-fit"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Detect OS and architecture
@@ -41,23 +41,23 @@ if [ -z "$LATEST" ]; then
     exit 1
 fi
 
-echo "Installing todufit $LATEST for $TARGET..."
+echo "Installing Todu Fit $LATEST for $TARGET..."
 
 # Download and extract
-URL="https://github.com/$REPO/releases/download/$LATEST/todufit-$TARGET.tar.gz"
+URL="https://github.com/$REPO/releases/download/$LATEST/todu-fit-$TARGET.tar.gz"
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-curl -fsSL "$URL" -o "$TEMP_DIR/todufit.tar.gz"
-tar -xzf "$TEMP_DIR/todufit.tar.gz" -C "$TEMP_DIR"
+curl -fsSL "$URL" -o "$TEMP_DIR/todu-fit.tar.gz"
+tar -xzf "$TEMP_DIR/todu-fit.tar.gz" -C "$TEMP_DIR"
 
 # Install
 mkdir -p "$INSTALL_DIR"
-mv "$TEMP_DIR/todufit" "$INSTALL_DIR/todufit"
-chmod +x "$INSTALL_DIR/todufit"
+mv "$TEMP_DIR/fit" "$INSTALL_DIR/fit"
+chmod +x "$INSTALL_DIR/fit"
 
 echo ""
-echo "✓ Installed todufit to $INSTALL_DIR/todufit"
+echo "✓ Installed fit to $INSTALL_DIR/fit"
 
 # Check if in PATH
 if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
@@ -68,4 +68,4 @@ if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
 fi
 
 echo ""
-echo "Run 'todufit --help' to get started."
+echo "Run 'fit --help' to get started."

@@ -72,8 +72,8 @@ use automerge::{AutoCommit, ReadDoc};
 ///
 /// # Example
 ///
-/// ```
-/// use todufit::sync::schema::DishesDoc;
+/// ```ignore
+/// use crate::sync::schema::DishesDoc;
 ///
 /// let doc = DishesDoc::new();
 /// assert!(doc.is_empty());
@@ -123,8 +123,8 @@ impl Default for DishesDoc {
 ///
 /// # Example
 ///
-/// ```
-/// use todufit::sync::schema::MealPlansDoc;
+/// ```ignore
+/// use crate::sync::schema::MealPlansDoc;
 ///
 /// let doc = MealPlansDoc::new();
 /// assert!(doc.is_empty());
@@ -174,8 +174,8 @@ impl Default for MealPlansDoc {
 ///
 /// # Example
 ///
-/// ```
-/// use todufit::sync::schema::MealLogsDoc;
+/// ```ignore
+/// use crate::sync::schema::MealLogsDoc;
 ///
 /// let doc = MealLogsDoc::new();
 /// assert!(doc.is_empty());

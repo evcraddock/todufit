@@ -76,14 +76,14 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} -p todu-fit-cli
 
       - name: Package binary (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../todufit-${{ matrix.target }}.tar.gz todufit
+          tar -czvf ../../../todu-fit-${{ matrix.target }}.tar.gz fit
           cd ../../..
 
       - name: Package binary (Windows)
@@ -91,14 +91,14 @@ jobs:
         shell: pwsh
         run: |
           cd target/${{ matrix.target }}/release
-          Compress-Archive -Path todufit.exe -DestinationPath ../../../todufit-${{ matrix.target }}.zip
+          Compress-Archive -Path fit.exe -DestinationPath ../../../todu-fit-${{ matrix.target }}.zip
           cd ../../..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: todufit-${{ matrix.target }}
-          path: todufit-${{ matrix.target }}.${{ matrix.archive }}
+          name: todu-fit-${{ matrix.target }}
+          path: todu-fit-${{ matrix.target }}.${{ matrix.archive }}
 
   release:
     name: Create Release

@@ -1,4 +1,4 @@
-# todufit
+# Todu Fit
 
 Local-first meal planning and nutrition tracking CLI.
 
@@ -15,12 +15,12 @@ Local-first meal planning and nutrition tracking CLI.
 ### Quick Install (Linux/macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/evcraddock/todufit/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/evcraddock/todu-fit/main/install.sh | bash
 ```
 
 ### Download Binary
 
-Pre-built binaries are available on the [releases page](https://github.com/evcraddock/todufit/releases):
+Pre-built binaries are available on the [releases page](https://github.com/evcraddock/todu-fit/releases):
 - Linux x86_64
 - macOS x86_64 (Intel)
 - macOS aarch64 (Apple Silicon)
@@ -29,30 +29,30 @@ Pre-built binaries are available on the [releases page](https://github.com/evcra
 ### Build from Source
 
 ```bash
-git clone https://github.com/evcraddock/todufit.git
-cd todufit
-cargo install --path .
+git clone https://github.com/evcraddock/todu-fit.git
+cd todu-fit
+cargo install --path todu-fit-cli
 ```
 
 ## Quick Start
 
 ```bash
 # Create a dish with nutrition info
-todufit dish create "Grilled Salmon" \
+fit dish create "Grilled Salmon" \
   --servings 2 \
   --nutrients '{"calories": 450, "protein": 40, "carbs": 5, "fat": 28}'
 
 # Plan a meal
-todufit mealplan create --date 2025-01-01 --type dinner --title "New Year Dinner" --dish "Grilled Salmon"
+fit mealplan create --date 2025-01-01 --type dinner --title "New Year Dinner" --dish "Grilled Salmon"
 
 # Log a meal from a plan
-todufit meal log <plan-id>
+fit meal log <plan-id>
 
 # Or log an unplanned meal
-todufit meal log --date 2025-01-01 --type lunch --dish "Grilled Salmon" --notes "Quick lunch"
+fit meal log --date 2025-01-01 --type lunch --dish "Grilled Salmon" --notes "Quick lunch"
 
 # View meal history with nutrition totals
-todufit meal history
+fit meal history
 ```
 
 ## Commands
@@ -60,13 +60,13 @@ todufit meal history
 ### Dishes
 
 ```bash
-todufit dish create <name> [options]    # Create a dish
-todufit dish list                       # List all dishes
-todufit dish show <name|id>             # Show dish details
-todufit dish update <name|id> [options] # Update a dish
-todufit dish delete <name|id>           # Delete a dish
-todufit dish add-ingredient <name|id> --name <ing> --quantity <n> --unit <u>
-todufit dish remove-ingredient <name|id> --name <ing>
+fit dish create <name> [options]    # Create a dish
+fit dish list                       # List all dishes
+fit dish show <name|id>             # Show dish details
+fit dish update <name|id> [options] # Update a dish
+fit dish delete <name|id>           # Delete a dish
+fit dish add-ingredient <name|id> --name <ing> --quantity <n> --unit <u>
+fit dish remove-ingredient <name|id> --name <ing>
 ```
 
 **Nutrients** are passed as JSON:
@@ -78,26 +78,26 @@ Units: kcal for calories, grams for everything else.
 ### Meal Plans
 
 ```bash
-todufit mealplan create --date <YYYY-MM-DD> --type <type> [--title] [--dish <name>]...
-todufit mealplan list [--from <date>] [--to <date>]
-todufit mealplan show <id|date> [--type <type>]
-todufit mealplan update <id> [options]
-todufit mealplan delete <id>
-todufit mealplan add-dish <plan-id> <dish>
-todufit mealplan remove-dish <plan-id> <dish>
+fit mealplan create --date <YYYY-MM-DD> --type <type> [--title] [--dish <name>]...
+fit mealplan list [--from <date>] [--to <date>]
+fit mealplan show <id|date> [--type <type>]
+fit mealplan update <id> [options]
+fit mealplan delete <id>
+fit mealplan add-dish <plan-id> <dish>
+fit mealplan remove-dish <plan-id> <dish>
 ```
 
 ### Meal Logging
 
 ```bash
 # Log from an existing plan
-todufit meal log <plan-id> [--notes <text>]
+fit meal log <plan-id> [--notes <text>]
 
 # Log an unplanned meal
-todufit meal log --date <YYYY-MM-DD> --type <type> [--dish <name>]... [--notes <text>]
+fit meal log --date <YYYY-MM-DD> --type <type> [--dish <name>]... [--notes <text>]
 
 # View history (default: last 7 days)
-todufit meal history [--from <date>] [--to <date>] [--format text|json]
+fit meal history [--from <date>] [--to <date>] [--format text|json]
 ```
 
 ### Sync
@@ -105,11 +105,11 @@ todufit meal history [--from <date>] [--to <date>] [--format text|json]
 Cross-device sync is provided by [todu-sync](https://github.com/evcraddock/todu-sync), a standalone Automerge sync server.
 
 ```bash
-todufit auth login    # Authenticate with sync server (magic link)
-todufit auth logout   # Remove API key
-todufit auth status   # Show authentication status
-todufit sync          # Sync all data with server
-todufit sync status   # Show sync configuration
+fit auth login    # Authenticate with sync server (magic link)
+fit auth logout   # Remove API key
+fit auth status   # Show authentication status
+fit sync          # Sync all data with server
+fit sync status   # Show sync configuration
 ```
 
 **Configure sync** in `~/.config/todufit/config.yaml`:
@@ -119,12 +119,12 @@ sync:
   auto_sync: true  # optional: sync after every write
 ```
 
-The `api_key` is automatically saved after `todufit auth login`.
+The `api_key` is automatically saved after `fit auth login`.
 
 ### Configuration
 
 ```bash
-todufit config show    # Show current config
+fit config show    # Show current config
 ```
 
 **Config file locations (platform-specific):**
@@ -147,22 +147,22 @@ created_by: your-name
 
 ```bash
 # Set up some dishes
-todufit dish create "Overnight Oats" --servings 1 \
+fit dish create "Overnight Oats" --servings 1 \
   --nutrients '{"calories": 350, "protein": 12, "carbs": 55, "fat": 10}'
 
-todufit dish create "Chicken Salad" --servings 1 \
+fit dish create "Chicken Salad" --servings 1 \
   --nutrients '{"calories": 400, "protein": 35, "carbs": 15, "fat": 22}'
 
 # Plan tomorrow's meals
-todufit mealplan create --date 2025-01-02 --type breakfast --dish "Overnight Oats"
-todufit mealplan create --date 2025-01-02 --type lunch --dish "Chicken Salad"
+fit mealplan create --date 2025-01-02 --type breakfast --dish "Overnight Oats"
+fit mealplan create --date 2025-01-02 --type lunch --dish "Chicken Salad"
 
 # Next day: log what you ate
-todufit meal log <breakfast-plan-id>
-todufit meal log <lunch-plan-id> --notes "Added extra dressing"
+fit meal log <breakfast-plan-id>
+fit meal log <lunch-plan-id> --notes "Added extra dressing"
 
 # Check your nutrition
-todufit meal history --from 2025-01-02 --to 2025-01-02
+fit meal history --from 2025-01-02 --to 2025-01-02
 ```
 
 Output:
@@ -194,7 +194,7 @@ make run ARGS="..."  # Run CLI with arguments
 
 ```
 ┌─────────────────────────────────────────────┐
-│              todufit CLI                     │
+│                fit CLI                       │
 │                                             │
 │  ┌─────────────┐      ┌─────────────────┐  │
 │  │  Automerge  │─────▶│     SQLite      │  │

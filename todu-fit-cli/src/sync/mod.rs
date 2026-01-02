@@ -12,8 +12,8 @@
 //!
 //! # Usage
 //!
-//! ```
-//! use todufit::sync::{DishesDoc, MealPlansDoc, MealLogsDoc};
+//! ```ignore
+//! use crate::sync::{DishesDoc, MealPlansDoc, MealLogsDoc};
 //!
 //! // Create empty documents
 //! let dishes = DishesDoc::new();
@@ -30,10 +30,9 @@ pub mod schema;
 pub mod storage;
 pub mod writer;
 
-pub use client::{SyncClient, SyncClientError, SyncResult};
-pub use dish_sync::{SyncDishError, SyncDishRepository};
-pub use meallog_sync::{SyncMealLogError, SyncMealLogRepository};
-pub use mealplan_sync::{SyncMealPlanError, SyncMealPlanRepository};
-pub use projection::{DishProjection, MealLogProjection, MealPlanProjection, ProjectionError};
-pub use schema::{DishesDoc, MealLogsDoc, MealPlansDoc};
-pub use storage::{DocType, DocumentStorage, StorageError};
+pub use client::{SyncClient, SyncClientError};
+pub use dish_sync::SyncDishRepository;
+pub use meallog_sync::SyncMealLogRepository;
+pub use mealplan_sync::SyncMealPlanRepository;
+pub use projection::{DishProjection, MealLogProjection, MealPlanProjection};
+pub use storage::DocType;

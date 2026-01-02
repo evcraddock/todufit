@@ -1,18 +1,22 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use todufit::commands::{
+mod commands;
+mod config;
+mod db;
+mod models;
+mod sync;
+
+use commands::{
     meal::MealRepos, AuthCommand, ConfigCommand, DishCommand, MealCommand, MealPlanCommand,
     SyncCommand,
 };
-use todufit::config::Config;
-use todufit::db::{init_db, DishRepository};
-use todufit::sync::{
-    SyncClient, SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository,
-};
+use config::Config;
+use db::{init_db, DishRepository};
+use sync::{SyncClient, SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
 
 #[derive(Parser)]
-#[command(name = "todufit")]
+#[command(name = "fit")]
 #[command(version)]
 #[command(about = "A fitness tracking CLI application", long_about = None)]
 struct Cli {

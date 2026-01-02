@@ -13,7 +13,7 @@ test:
 
 # Run the application (pass ARGS for arguments: make run ARGS="dish create Test")
 run:
-	cargo run -- $(ARGS)
+	cargo run -p todu-fit-cli -- $(ARGS)
 
 # Clean build artifacts
 clean:
@@ -40,11 +40,11 @@ lint: fmt-check clippy
 
 # Build optimized release binary
 release:
-	cargo build --release
+	cargo build --release -p todu-fit-cli
 
 # Install locally
 install:
-	cargo install --path .
+	cargo install --path todu-fit-cli
 
 # Run tests and lints (good for CI/pre-commit)
 ci: lint test

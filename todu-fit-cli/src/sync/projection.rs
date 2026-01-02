@@ -12,6 +12,7 @@ use crate::models::{Dish, Ingredient, MealLog, MealPlan, MealType, Nutrient};
 
 /// Error type for projection operations.
 #[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum ProjectionError {
     /// Error reading from Automerge document.
     AutomergeError(String),
