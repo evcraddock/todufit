@@ -112,7 +112,7 @@ fit sync          # Sync all data with server
 fit sync status   # Show sync configuration
 ```
 
-**Configure sync** in `~/.config/todufit/config.yaml`:
+**Configure sync** in `~/.config/fit/config.yaml`:
 ```yaml
 sync:
   server_url: "ws://your-sync-server:8080"
@@ -128,18 +128,18 @@ fit config show    # Show current config
 ```
 
 **Config file locations (platform-specific):**
-- Linux: `~/.config/todufit/config.yaml`
-- macOS: `~/Library/Application Support/todufit/config.yaml`
-- Windows: `%APPDATA%\todufit\config.yaml`
+- Linux: `~/.config/fit/config.yaml`
+- macOS: `~/Library/Application Support/fit/config.yaml`
+- Windows: `%APPDATA%\fit\config.yaml`
 
 **Data directory (database):**
-- Linux: `~/.local/share/todufit/`
-- macOS: `~/Library/Application Support/todufit/`
-- Windows: `%APPDATA%\todufit\`
+- Linux: `~/.local/share/fit/`
+- macOS: `~/Library/Application Support/fit/`
+- Windows: `%APPDATA%\fit\`
 
 ```yaml
 # config.yaml
-database_path: /custom/path/todufit.db  # optional, overrides default
+database_path: /custom/path/fit.db  # optional, overrides default
 created_by: your-name
 ```
 

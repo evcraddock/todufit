@@ -74,7 +74,7 @@ Environment variables: `TODUFIT_SYNC_URL`, `TODUFIT_SYNC_API_KEY`
 - `SyncDishRepository` - Sync-aware repository for dishes
 - `SyncMealPlanRepository` - Sync-aware repository for meal plans
 - `SyncMealLogRepository` - Sync-aware repository for meal logs
-- Automerge documents persist to `~/.local/share/todufit/`:
+- Automerge documents persist to `~/.local/share/fit/`:
   - `dishes.automerge`
   - `mealplans.automerge`
   - `meallogs.automerge`

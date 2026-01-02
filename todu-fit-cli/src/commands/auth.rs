@@ -138,7 +138,7 @@ async fn login(config: &Config) -> Result<(), AuthError> {
                     Html(
                         r#"<!DOCTYPE html>
 <html>
-<head><title>ToduFit - Success</title></head>
+<head><title>Todu Fit - Success</title></head>
 <body>
 <h1>Authentication successful!</h1>
 <p>You can close this window and return to the terminal.</p>
@@ -314,7 +314,7 @@ fn status(config: &Config) -> Result<(), AuthError> {
         };
         println!("Logged in (API key: {})", masked);
     } else if config.sync.server_url.is_some() {
-        println!("Not logged in. Run 'todufit auth login' to authenticate.");
+        println!("Not logged in. Run 'fit auth login' to authenticate.");
     } else {
         println!("Not configured. Set sync.server_url in config first.");
     }

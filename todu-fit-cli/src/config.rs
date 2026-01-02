@@ -78,7 +78,7 @@ struct ConfigFile {
 impl Config {
     /// Load configuration with priority: env vars > config file > defaults
     pub fn load(config_path: Option<PathBuf>) -> Result<Self, ConfigError> {
-        let default_db_path = Self::default_data_dir().join("todufit.db");
+        let default_db_path = Self::default_data_dir().join("fit.db");
         let default_created_by = "default".to_string();
 
         // Start with defaults
@@ -109,17 +109,17 @@ impl Config {
         }
 
         // Apply environment variable overrides
-        if let Ok(db_path) = std::env::var("TODUFIT_DATABASE_PATH") {
+        if let Ok(db_path) = std::env::var("FIT_DATABASE_PATH") {
             database_path = ConfigValue::new(PathBuf::from(db_path), ConfigSource::Environment);
         }
-        if let Ok(user) = std::env::var("TODUFIT_CREATED_BY") {
+        if let Ok(user) = std::env::var("FIT_CREATED_BY") {
             created_by = ConfigValue::new(user, ConfigSource::Environment);
         }
         // Sync env var overrides
-        if let Ok(url) = std::env::var("TODUFIT_SYNC_URL") {
+        if let Ok(url) = std::env::var("FIT_SYNC_URL") {
             sync.server_url = Some(url);
         }
-        if let Ok(key) = std::env::var("TODUFIT_SYNC_API_KEY") {
+        if let Ok(key) = std::env::var("FIT_SYNC_API_KEY") {
             sync.api_key = Some(key);
         }
 
@@ -132,23 +132,23 @@ impl Config {
     }
 
     /// Default config directory (platform-specific):
-    /// - Linux: ~/.config/todufit/
-    /// - macOS: ~/Library/Application Support/todufit/
-    /// - Windows: %APPDATA%/todufit/
+    /// - Linux: ~/.config/fit/
+    /// - macOS: ~/Library/Application Support/fit/
+    /// - Windows: %APPDATA%/fit/
     pub fn default_config_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("todufit")
+            .join("fit")
     }
 
     /// Default data directory (platform-specific):
-    /// - Linux: ~/.local/share/todufit/
-    /// - macOS: ~/Library/Application Support/todufit/
-    /// - Windows: %APPDATA%/todufit/
+    /// - Linux: ~/.local/share/fit/
+    /// - macOS: ~/Library/Application Support/fit/
+    /// - Windows: %APPDATA%/fit/
     pub fn default_data_dir() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("todufit")
+            .join("fit")
     }
 
     /// Default config file path (platform-specific config dir + config.yaml)
@@ -194,7 +194,7 @@ mod tests {
             .database_path
             .value
             .to_string_lossy()
-            .contains("todufit.db"));
+            .contains("fit.db"));
         assert_eq!(config.database_path.source, ConfigSource::Default);
         assert_eq!(config.created_by.value, "default");
         assert_eq!(config.created_by.source, ConfigSource::Default);
@@ -230,14 +230,14 @@ mod tests {
         writeln!(file, "created_by: fromfile").unwrap();
 
         // Set env var
-        std::env::set_var("TODUFIT_CREATED_BY", "fromenv");
+        std::env::set_var("FIT_CREATED_BY", "fromenv");
 
         let config = Config::load(Some(config_path)).unwrap();
         assert_eq!(config.created_by.value, "fromenv");
         assert_eq!(config.created_by.source, ConfigSource::Environment);
 
         // Clean up
-        std::env::remove_var("TODUFIT_CREATED_BY");
+        std::env::remove_var("FIT_CREATED_BY");
     }
 
     #[test]

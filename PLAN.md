@@ -66,50 +66,50 @@ Local-first meal planning CLI with Automerge sync.
 
 ### Dish
 ```bash
-todufit dish create "Chicken Soup"
-todufit dish list
-todufit dish show <id|name>
-todufit dish update <id|name>
-todufit dish delete <id|name>
-todufit dish add-ingredient <id|name> --name "chicken" --quantity 2 --unit "lbs"
-todufit dish remove-ingredient <id|name> --name "chicken"
+fit dish create "Chicken Soup"
+fit dish list
+fit dish show <id|name>
+fit dish update <id|name>
+fit dish delete <id|name>
+fit dish add-ingredient <id|name> --name "chicken" --quantity 2 --unit "lbs"
+fit dish remove-ingredient <id|name> --name "chicken"
 ```
 
 ### MealPlan
 ```bash
-todufit mealplan create --date 2025-01-01 --type dinner --title "Sunday Dinner"
-todufit mealplan list
-todufit mealplan show <id|date>
-todufit mealplan update <id>
-todufit mealplan delete <id>
-todufit mealplan add-dish <plan-id> <dish-id>
-todufit mealplan remove-dish <plan-id> <dish-id>
+fit mealplan create --date 2025-01-01 --type dinner --title "Sunday Dinner"
+fit mealplan list
+fit mealplan show <id|date>
+fit mealplan update <id>
+fit mealplan delete <id>
+fit mealplan add-dish <plan-id> <dish-id>
+fit mealplan remove-dish <plan-id> <dish-id>
 ```
 
 ### Sync
 ```bash
-todufit sync push
-todufit sync pull
-todufit sync status
+fit sync push
+fit sync pull
+fit sync status
 ```
 
 ### Meal (logging)
 ```bash
 # Mark a planned meal as eaten
-todufit meal log <mealplan-id>
+fit meal log <mealplan-id>
 
 # Log an unplanned meal
-todufit meal log --date 2025-01-01 --type dinner --dish "Pizza"
+fit meal log --date 2025-01-01 --type dinner --dish "Pizza"
 
 # View meal history
-todufit meal history
-todufit meal history --from 2025-01-01 --to 2025-01-07
+fit meal history
+fit meal history --from 2025-01-01 --to 2025-01-07
 ```
 
 ### Config
 ```bash
-todufit config init
-todufit config show
+fit config init
+fit config show
 ```
 
 ---
@@ -124,12 +124,12 @@ One Automerge document per entity type:
 
 ### Local Storage
 ```
-~/.todufit/
+~/.local/share/fit/
   data/
     dishes.automerge
     mealplans.automerge
     meallogs.automerge
-  todufit.db          # SQLite projection
+  fit.db          # SQLite projection
   config.yaml
 ```
 

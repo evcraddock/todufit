@@ -215,7 +215,7 @@ Response:
 ### CLI
 
 - Uses redirect-based magic link flow (local callback server)
-- Stores API key in `~/.config/todufit/config.yaml`
+- Stores API key in `~/.config/fit/config.yaml`
 - No passkey support (terminal limitation)
 - API key used directly in WebSocket URL
 

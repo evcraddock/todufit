@@ -69,7 +69,7 @@ impl ConfigCommand {
                 // Check if config already exists
                 if config_path.exists() {
                     println!("Config file already exists: {}", config_path.display());
-                    println!("Use 'todufit config show' to view current configuration.");
+                    println!("Use 'fit config show' to view current configuration.");
                     return Ok(());
                 }
 
@@ -79,10 +79,10 @@ impl ConfigCommand {
                 }
 
                 // Write default config
-                let default_config = r#"# todufit configuration
+                let default_config = r#"# fit configuration
 
-# Path to SQLite database (default: ~/.config/todufit/todufit.db)
-# database_path: ~/.config/todufit/todufit.db
+# Path to SQLite database (default: ~/.local/share/fit/fit.db)
+# database_path: ~/.local/share/fit/fit.db
 
 # Default user name for new dishes
 created_by: default

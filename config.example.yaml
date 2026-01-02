@@ -1,12 +1,12 @@
-# todufit configuration file
-# Default location: ~/.config/todufit/config.yaml
+# fit configuration file
+# Default location: ~/.config/fit/config.yaml
 #
 # Environment variables override these settings:
-#   TODUFIT_DATABASE_PATH - overrides database_path
-#   TODUFIT_CREATED_BY - overrides created_by
+#   FIT_DATABASE_PATH - overrides database_path
+#   FIT_CREATED_BY - overrides created_by
 
-# Path to SQLite database (default: ~/.todufit/todufit.db)
-# database_path: /path/to/custom/todufit.db
+# Path to SQLite database (default: ~/.local/share/fit/fit.db)
+# database_path: /path/to/custom/fit.db
 
 # Default user name for new dishes (default: "default")
 # created_by: your_username

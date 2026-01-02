@@ -1,4 +1,4 @@
-//! Automerge document schemas for todufit entities.
+//! Automerge document schemas for Todu Fit entities.
 //!
 //! Each document type wraps an Automerge document and provides type-safe
 //! operations for the corresponding entity type. Documents are structured as
