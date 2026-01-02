@@ -2449,9 +2449,12 @@ version = "0.9.0"
 dependencies = [
  "automerge",
  "chrono",
+ "futures",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tokio-tungstenite",
  "uuid",
 ]
 

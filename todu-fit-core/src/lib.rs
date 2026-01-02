@@ -4,12 +4,14 @@
 
 pub mod automerge;
 pub mod models;
+pub mod sync;
 
 pub use automerge::{
     delete_dish, delete_meallog, delete_mealplan, write_dish, write_meallog, write_mealplan,
     DocType, DocumentStorage, StorageError,
 };
 pub use models::{Dish, Ingredient, MealLog, MealPlan, MealType, Nutrient};
+pub use sync::{SyncClient, SyncError, SyncResult};
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

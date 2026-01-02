@@ -105,7 +105,7 @@ impl SyncCommand {
         let client = SyncClient::from_config(&config.sync)?;
         match client.sync_document(DocType::Dishes).await {
             Ok(_) => println!("✓ connected"),
-            Err(SyncClientError::ConnectionError(_)) => println!("✗ unreachable"),
+            Err(SyncClientError::SyncError(_)) => println!("✗ unreachable"),
             Err(e) => println!("✗ error: {}", e),
         }
 
