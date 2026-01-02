@@ -2,8 +2,13 @@
 //!
 //! Shared types and logic for Todu Fit applications.
 
+pub mod automerge;
 pub mod models;
 
+pub use automerge::{
+    delete_dish, delete_meallog, delete_mealplan, write_dish, write_meallog, write_mealplan,
+    DocType, DocumentStorage, StorageError,
+};
 pub use models::{Dish, Ingredient, MealLog, MealPlan, MealType, Nutrient};
 
 pub fn version() -> &'static str {

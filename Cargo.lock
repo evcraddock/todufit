@@ -2447,9 +2447,11 @@ dependencies = [
 name = "todu-fit-core"
 version = "0.9.0"
 dependencies = [
+ "automerge",
  "chrono",
  "serde",
  "serde_json",
+ "tempfile",
  "uuid",
 ]
 
