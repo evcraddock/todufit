@@ -183,11 +183,11 @@ Total: 2 meal(s)
 ## Development
 
 ```bash
-make build           # Build debug binary
-make test            # Run tests
-make fmt             # Format code
-make lint            # Run clippy + format check
-make run ARGS="..."  # Run CLI with arguments
+cargo build                            # Build debug binary
+cargo test                             # Run tests
+cargo fmt                              # Format code
+cargo clippy                           # Run linter
+cargo run -p todu-fit-cli -- <args>    # Run CLI with arguments
 ```
 
 ## Architecture
