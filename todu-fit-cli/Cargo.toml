@@ -4,6 +4,7 @@ version = "0.9.0"
 edition = "2021"
 
 [dependencies]
+todu-fit-core = { path = "../todu-fit-core" }
 automerge = "0.7"
 axum = "0.8"  # Used for local callback server in auth
 base64 = "0.22"
