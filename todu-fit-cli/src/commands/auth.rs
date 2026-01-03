@@ -195,7 +195,11 @@ async fn login(config: &Config) -> Result<(), AuthError> {
     match result {
         Ok(Ok(callback)) => {
             // Save API key to config
-            save_api_key(&callback.api_key)?;
+            let config_path = config
+                .config_file
+                .clone()
+                .unwrap_or_else(Config::default_config_path);
+            save_api_key(&callback.api_key, &config_path)?;
             println!("Authenticated as {}", callback.user);
             Ok(())
         }
@@ -218,12 +222,10 @@ struct CallbackResult {
 }
 
 /// Save API key to config file
-fn save_api_key(api_key: &str) -> Result<(), AuthError> {
-    let config_path = Config::default_config_path();
-
+fn save_api_key(api_key: &str, config_path: &std::path::Path) -> Result<(), AuthError> {
     // Read existing config or create new
     let mut config: serde_yaml::Value = if config_path.exists() {
-        let contents = std::fs::read_to_string(&config_path)
+        let contents = std::fs::read_to_string(config_path)
             .map_err(|e| AuthError::ConfigError(e.to_string()))?;
         serde_yaml::from_str(&contents).map_err(|e| AuthError::ConfigError(e.to_string()))?
     } else {
@@ -260,7 +262,7 @@ fn save_api_key(api_key: &str) -> Result<(), AuthError> {
 
     // Write config
     let yaml = serde_yaml::to_string(&config).map_err(|e| AuthError::ConfigError(e.to_string()))?;
-    std::fs::write(&config_path, yaml).map_err(|e| AuthError::ConfigError(e.to_string()))?;
+    std::fs::write(config_path, yaml).map_err(|e| AuthError::ConfigError(e.to_string()))?;
 
     Ok(())
 }

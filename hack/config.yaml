@@ -1,3 +1,7 @@
 # Local development configuration
 database_path: hack/fit.db
 created_by: dev
+
+sync:
+  server_url: ws://localhost:8080
+  api_key: Zm3w28CqZCQ-kuiMq54EzFXS1xBl1hLuHZIPm-_V4TA
