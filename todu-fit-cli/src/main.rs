@@ -73,6 +73,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Dish(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
+            // Sync before command if auto_sync enabled
+            if config.sync.auto_sync && config.sync.is_configured() {
+                auto_sync(&pool, &config).await;
+            }
             let repo = SyncDishRepository::new(pool.clone());
             cmd.run(&repo, &config).await?;
             should_auto_sync = true;
@@ -80,6 +84,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Meal(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
+            // Sync before command if auto_sync enabled
+            if config.sync.auto_sync && config.sync.is_configured() {
+                auto_sync(&pool, &config).await;
+            }
             let meallog_repo = SyncMealLogRepository::new(pool.clone());
             let mealplan_repo = SyncMealPlanRepository::new(pool.clone());
             let dish_repo = DishRepository::new(pool.clone());
@@ -94,6 +102,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Mealplan(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;
+            // Sync before command if auto_sync enabled
+            if config.sync.auto_sync && config.sync.is_configured() {
+                auto_sync(&pool, &config).await;
+            }
             let mealplan_repo = SyncMealPlanRepository::new(pool.clone());
             let dish_repo = DishRepository::new(pool.clone());
             cmd.run(&mealplan_repo, &dish_repo, &config).await?;
