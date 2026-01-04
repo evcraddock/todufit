@@ -11,7 +11,7 @@ pub use todu_fit_core::automerge::DocumentStorage as CoreDocumentStorage;
 pub use todu_fit_core::automerge::{DocType, StorageError};
 
 /// CLI wrapper for DocumentStorage that provides a default constructor.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DocumentStorage(CoreDocumentStorage);
 
 impl DocumentStorage {

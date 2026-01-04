@@ -10,7 +10,7 @@ use super::DocType;
 /// Storage for Automerge documents.
 ///
 /// Handles loading and saving documents to the filesystem.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DocumentStorage {
     data_dir: PathBuf,
 }

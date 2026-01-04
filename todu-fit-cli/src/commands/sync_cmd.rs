@@ -28,7 +28,7 @@ impl SyncCommand {
     }
 
     async fn sync(&self, pool: &SqlitePool, config: &Config) -> Result<(), SyncCommandError> {
-        let client = SyncClient::from_config(&config.sync)?;
+        let mut client = SyncClient::from_config(&config.sync)?;
 
         println!("Syncing with server...");
         println!();
@@ -102,7 +102,7 @@ impl SyncCommand {
         print!("Server status: ");
 
         // Try WebSocket connection to verify connectivity
-        let client = SyncClient::from_config(&config.sync)?;
+        let mut client = SyncClient::from_config(&config.sync)?;
         match client.sync_document(DocType::Dishes).await {
             Ok(_) => println!("✓ connected"),
             Err(SyncClientError::SyncError(_)) => println!("✗ unreachable"),

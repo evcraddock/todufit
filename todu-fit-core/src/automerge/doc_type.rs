@@ -1,7 +1,7 @@
 //! Document type enumeration for Automerge storage.
 
 /// Document types that can be stored.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocType {
     Dishes,
     MealPlans,

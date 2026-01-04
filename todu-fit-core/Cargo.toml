@@ -6,10 +6,15 @@ description = "Core library for Todu Fit - shared models and sync logic"
 
 [dependencies]
 automerge = "0.7"
+bs58 = "0.5"
 chrono = { version = "0.4", features = ["serde"] }
+ciborium = "0.2"
 futures = "0.3"
+reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
 serde_json = "1"
+sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "net", "sync"] }
 tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 uuid = { version = "1", features = ["v4", "serde"] }

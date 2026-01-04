@@ -3,3 +3,4 @@ created_by: dev
 sync:
   server_url: ws://localhost:8080
   api_key: rYjti8F7AMmmko479exoZmzq7xWWknKOx2YCfd_h5eg
+  auto_sync: true

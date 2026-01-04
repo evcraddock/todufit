@@ -11,7 +11,7 @@ pub use automerge::{
     DocType, DocumentStorage, StorageError,
 };
 pub use models::{Dish, Ingredient, MealLog, MealPlan, MealType, Nutrient};
-pub use sync::{SyncClient, SyncError, SyncResult};
+pub use sync::{generate_doc_id, SyncClient, SyncError, SyncResult};
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

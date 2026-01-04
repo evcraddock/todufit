@@ -3,6 +3,8 @@
 //! This module wraps the core sync client and adds CLI-specific functionality
 //! like storage management and SQLite projection.
 
+use std::collections::HashMap;
+
 use automerge::AutoCommit;
 
 use super::storage::{DocType, DocumentStorage};
@@ -50,6 +52,7 @@ impl From<CoreSyncError> for SyncClientError {
 }
 
 /// Sync client for the CLI that manages storage and projection.
+#[derive(Debug)]
 pub struct SyncClient {
     core: CoreSyncClient,
     storage: DocumentStorage,
@@ -83,22 +86,43 @@ impl SyncClient {
         }
     }
 
-    /// Syncs all document types with the server.
+    /// Syncs all document types with the server over a single connection.
     ///
     /// Returns results for each document type.
-    pub async fn sync_all(&self) -> Result<Vec<SyncResult>, SyncClientError> {
-        let mut results = Vec::new();
+    pub async fn sync_all(&mut self) -> Result<Vec<SyncResult>, SyncClientError> {
+        // Load all documents
+        let mut docs: HashMap<DocType, AutoCommit> = HashMap::new();
 
         for doc_type in [DocType::Dishes, DocType::MealPlans, DocType::MealLogs] {
-            let result = self.sync_document(doc_type).await?;
-            results.push(result);
+            let doc = self
+                .storage
+                .load(doc_type)
+                .map_err(|e| SyncClientError::StorageError(e.to_string()))?
+                .unwrap_or_else(AutoCommit::new);
+            docs.insert(doc_type, doc);
+        }
+
+        // Sync all documents over single connection
+        let results = self.core.sync_all(&mut docs).await?;
+
+        // Save all documents
+        for (doc_type, mut doc) in docs {
+            self.storage
+                .save(doc_type, &mut doc)
+                .map_err(|e| SyncClientError::StorageError(e.to_string()))?;
         }
 
         Ok(results)
     }
 
     /// Syncs a single document type with the server.
-    pub async fn sync_document(&self, doc_type: DocType) -> Result<SyncResult, SyncClientError> {
+    ///
+    /// Note: This still opens a connection for each call. For efficiency,
+    /// prefer using `sync_all` to sync all documents over a single connection.
+    pub async fn sync_document(
+        &mut self,
+        doc_type: DocType,
+    ) -> Result<SyncResult, SyncClientError> {
         // Load or create local document
         let mut doc = self
             .storage
@@ -119,7 +143,7 @@ impl SyncClient {
 
     /// Syncs all documents and projects changes to SQLite.
     pub async fn sync_and_project(
-        &self,
+        &mut self,
         pool: &sqlx::SqlitePool,
     ) -> Result<Vec<SyncResult>, SyncClientError> {
         let results = self.sync_all().await?;
@@ -173,33 +197,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_ws_url_with_ws() {
+    fn test_sync_client_new() {
         let client = SyncClient::new("ws://localhost:8080".to_string(), "test-key".to_string());
-        let url = client.core.build_ws_url(DocType::Dishes);
-        assert_eq!(url, "ws://localhost:8080/sync/dishes?key=test-key");
+        assert_eq!(client.core.server_url(), "ws://localhost:8080");
+        assert_eq!(client.core.api_key(), "test-key");
     }
 
     #[test]
-    fn test_build_ws_url_with_http() {
-        let client = SyncClient::new("http://localhost:8080".to_string(), "test-key".to_string());
-        let url = client.core.build_ws_url(DocType::Dishes);
-        assert_eq!(url, "ws://localhost:8080/sync/dishes?key=test-key");
+    fn test_sync_client_from_config() {
+        let config = SyncConfig {
+            server_url: Some("https://sync.example.com".to_string()),
+            api_key: Some("my-key".to_string()),
+            auto_sync: false,
+        };
+        let client = SyncClient::from_config(&config).unwrap();
+        assert_eq!(client.core.server_url(), "https://sync.example.com");
+        assert_eq!(client.core.api_key(), "my-key");
     }
 
     #[test]
-    fn test_build_ws_url_with_https() {
-        let client = SyncClient::new(
-            "https://sync.example.com".to_string(),
-            "test-key".to_string(),
-        );
-        let url = client.core.build_ws_url(DocType::MealPlans);
-        assert_eq!(url, "wss://sync.example.com/sync/mealplans?key=test-key");
-    }
-
-    #[test]
-    fn test_build_ws_url_bare_host() {
-        let client = SyncClient::new("localhost:8080".to_string(), "test-key".to_string());
-        let url = client.core.build_ws_url(DocType::MealLogs);
-        assert_eq!(url, "ws://localhost:8080/sync/meallogs?key=test-key");
+    fn test_sync_client_not_configured() {
+        let config = SyncConfig {
+            server_url: None,
+            api_key: None,
+            auto_sync: false,
+        };
+        let result = SyncClient::from_config(&config);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SyncClientError::NotConfigured
+        ));
     }
 }

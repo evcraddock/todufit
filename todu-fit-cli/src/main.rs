@@ -137,7 +137,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// Perform auto-sync in background, failing silently
 async fn auto_sync(pool: &sqlx::SqlitePool, config: &Config) {
     match SyncClient::from_config(&config.sync) {
-        Ok(client) => {
+        Ok(mut client) => {
             match client.sync_and_project(pool).await {
                 Ok(_) => {
                     // Sync succeeded silently

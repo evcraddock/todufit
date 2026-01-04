@@ -13,6 +13,16 @@ pub enum SyncError {
     ProtocolError(String),
     /// Storage error
     StorageError(String),
+    /// HTTP request error (e.g., /me endpoint)
+    HttpError(String),
+    /// Handshake failed
+    HandshakeError(String),
+    /// Document unavailable on server
+    DocumentUnavailable(String),
+    /// CBOR encoding/decoding error
+    CborError(String),
+    /// Handshake timeout
+    HandshakeTimeout,
 }
 
 impl std::fmt::Display for SyncError {
@@ -26,6 +36,13 @@ impl std::fmt::Display for SyncError {
             SyncError::WebSocketError(e) => write!(f, "WebSocket error: {}", e),
             SyncError::ProtocolError(e) => write!(f, "Sync protocol error: {}", e),
             SyncError::StorageError(e) => write!(f, "Storage error: {}", e),
+            SyncError::HttpError(e) => write!(f, "HTTP error: {}", e),
+            SyncError::HandshakeError(e) => write!(f, "Handshake failed: {}", e),
+            SyncError::DocumentUnavailable(doc_id) => {
+                write!(f, "Document unavailable: {}", doc_id)
+            }
+            SyncError::CborError(e) => write!(f, "CBOR error: {}", e),
+            SyncError::HandshakeTimeout => write!(f, "Handshake timed out"),
         }
     }
 }

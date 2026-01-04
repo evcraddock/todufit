@@ -1,15 +1,25 @@
 //! WebSocket sync client for connecting to the Todu Fit sync server.
 //!
-//! Uses the Automerge sync protocol over WebSocket to synchronize
-//! documents with the server.
+//! Uses the automerge-repo WebSocket protocol with CBOR-encoded messages
+//! to synchronize documents with the server.
+
+use std::collections::HashMap;
+use std::time::Duration;
 
 use automerge::sync::{Message as SyncMessage, State as SyncState, SyncDoc};
 use automerge::AutoCommit;
 use futures::{SinkExt, StreamExt};
+use tokio::time::timeout;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use super::SyncError;
+use super::error::SyncError;
+use super::protocol::{
+    generate_doc_id, generate_peer_id, MeResponse, PeerMetadata, ProtocolMessage,
+};
 use crate::automerge::DocType;
+
+/// Timeout for handshake completion.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Result of a sync operation for a single document type.
 #[derive(Debug, Clone)]
@@ -22,13 +32,26 @@ pub struct SyncResult {
     pub rounds: usize,
 }
 
+/// Identity information obtained from the /me endpoint.
+#[derive(Debug, Clone)]
+pub struct Identity {
+    pub user_id: String,
+    pub group_id: String,
+}
+
 /// Sync client for connecting to the Todu Fit sync server.
 ///
-/// This is a stateless client that can sync individual documents.
-/// Storage and projection are handled externally.
+/// This client uses the automerge-repo WebSocket protocol:
+/// 1. Fetches identity via /me endpoint
+/// 2. Opens a single WebSocket connection
+/// 3. Performs handshake (join/peer messages)
+/// 4. Syncs all documents over the single connection
+#[derive(Debug)]
 pub struct SyncClient {
     server_url: String,
     api_key: String,
+    /// Cached identity from /me endpoint
+    identity: Option<Identity>,
 }
 
 impl SyncClient {
@@ -37,6 +60,7 @@ impl SyncClient {
         Self {
             server_url,
             api_key,
+            identity: None,
         }
     }
 
@@ -50,37 +74,299 @@ impl SyncClient {
         &self.api_key
     }
 
-    /// Syncs a document with the server.
+    /// Fetches identity (user_id, group_id) from the /me endpoint.
     ///
-    /// The document is modified in place with any changes from the server.
-    /// Returns a SyncResult indicating whether changes were made.
-    pub async fn sync_document(
-        &self,
-        doc_type: DocType,
-        doc: &mut AutoCommit,
-    ) -> Result<SyncResult, SyncError> {
-        // Build WebSocket URL
-        let ws_url = self.build_ws_url(doc_type);
+    /// Results are cached for subsequent calls.
+    pub async fn fetch_identity(&mut self) -> Result<&Identity, SyncError> {
+        if self.identity.is_some() {
+            return Ok(self.identity.as_ref().unwrap());
+        }
 
-        // Connect to server
+        let http_url = self.build_http_url("/me");
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(&http_url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .map_err(|e| SyncError::HttpError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(SyncError::HttpError(format!(
+                "Server returned status {}",
+                response.status()
+            )));
+        }
+
+        let me: MeResponse = response
+            .json()
+            .await
+            .map_err(|e| SyncError::HttpError(e.to_string()))?;
+
+        self.identity = Some(Identity {
+            user_id: me.user_id,
+            group_id: me.group_id,
+        });
+
+        Ok(self.identity.as_ref().unwrap())
+    }
+
+    /// Syncs all document types with the server over a single connection.
+    ///
+    /// This is the primary sync method. It:
+    /// 1. Fetches identity if not cached
+    /// 2. Opens WebSocket connection
+    /// 3. Performs handshake
+    /// 4. Syncs each document type
+    /// 5. Closes connection
+    pub async fn sync_all(
+        &mut self,
+        docs: &mut HashMap<DocType, AutoCommit>,
+    ) -> Result<Vec<SyncResult>, SyncError> {
+        // Ensure we have identity
+        self.fetch_identity().await?;
+        let identity = self.identity.as_ref().unwrap();
+
+        // Compute document IDs
+        let doc_ids: HashMap<DocType, String> = [
+            (
+                DocType::Dishes,
+                generate_doc_id(&identity.group_id, "dishes"),
+            ),
+            (
+                DocType::MealPlans,
+                generate_doc_id(&identity.group_id, "mealplans"),
+            ),
+            (
+                DocType::MealLogs,
+                generate_doc_id(&identity.user_id, "meallogs"),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        // Connect to WebSocket
+        let ws_url = self.build_ws_url();
         let (ws_stream, _) = connect_async(&ws_url)
             .await
             .map_err(|e| SyncError::ConnectionError(e.to_string()))?;
 
         let (mut sender, mut receiver) = ws_stream.split();
 
+        // Generate peer ID for this connection
+        let peer_id = generate_peer_id();
+
+        // Perform handshake
+        let server_peer_id = self
+            .perform_handshake(&mut sender, &mut receiver, &peer_id)
+            .await?;
+
+        // Sync each document
+        let mut results = Vec::new();
+
+        for doc_type in [DocType::Dishes, DocType::MealPlans, DocType::MealLogs] {
+            let doc_id = doc_ids.get(&doc_type).unwrap();
+
+            // Get or create document
+            let doc = docs.entry(doc_type).or_default();
+
+            let result = self
+                .sync_document_over_connection(
+                    &mut sender,
+                    &mut receiver,
+                    doc_type,
+                    doc_id,
+                    &peer_id,
+                    &server_peer_id,
+                    doc,
+                )
+                .await?;
+
+            results.push(result);
+        }
+
+        // Close WebSocket gracefully
+        let _ = sender.send(Message::Close(None)).await;
+
+        Ok(results)
+    }
+
+    /// Syncs a single document with the server (legacy method for compatibility).
+    ///
+    /// Note: This opens a new connection for each call. For efficiency,
+    /// prefer using `sync_all` to sync all documents over a single connection.
+    pub async fn sync_document(
+        &mut self,
+        doc_type: DocType,
+        doc: &mut AutoCommit,
+    ) -> Result<SyncResult, SyncError> {
+        let mut docs: HashMap<DocType, AutoCommit> = HashMap::new();
+
+        // Take ownership temporarily
+        let temp_doc = std::mem::replace(doc, AutoCommit::new());
+        docs.insert(doc_type, temp_doc);
+
+        let results = self.sync_all(&mut docs).await?;
+
+        // Put the document back
+        if let Some(synced_doc) = docs.remove(&doc_type) {
+            *doc = synced_doc;
+        }
+
+        // Return result for the requested doc type
+        results
+            .into_iter()
+            .find(|r| r.doc_type == doc_type)
+            .ok_or_else(|| SyncError::ProtocolError("Document not synced".to_string()))
+    }
+
+    /// Performs the handshake with the server.
+    ///
+    /// Sends a `join` message and waits for a `peer` response.
+    async fn perform_handshake<S, R>(
+        &self,
+        sender: &mut S,
+        receiver: &mut R,
+        peer_id: &str,
+    ) -> Result<String, SyncError>
+    where
+        S: SinkExt<Message> + Unpin,
+        S::Error: std::fmt::Display,
+        R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+    {
+        // Send join message
+        let join_msg = ProtocolMessage::Join {
+            sender_id: peer_id.to_string(),
+            supported_protocol_versions: vec!["1".to_string()],
+            metadata: Some(PeerMetadata {
+                storage_id: None,
+                is_ephemeral: true,
+            }),
+        };
+
+        let encoded = join_msg
+            .encode()
+            .map_err(|e| SyncError::CborError(e.to_string()))?;
+
+        sender
+            .send(Message::Binary(encoded.into()))
+            .await
+            .map_err(|e| SyncError::WebSocketError(e.to_string()))?;
+
+        // Wait for peer response with timeout
+        let peer_response = timeout(HANDSHAKE_TIMEOUT, async {
+            while let Some(msg_result) = receiver.next().await {
+                match msg_result {
+                    Ok(Message::Binary(data)) => {
+                        let msg = ProtocolMessage::decode(&data)
+                            .map_err(|e| SyncError::CborError(e.to_string()))?;
+
+                        match msg {
+                            ProtocolMessage::Peer {
+                                sender_id,
+                                target_id,
+                                selected_protocol_version: _,
+                            } => {
+                                if target_id != peer_id {
+                                    return Err(SyncError::HandshakeError(
+                                        "Peer response target_id mismatch".to_string(),
+                                    ));
+                                }
+                                return Ok(sender_id);
+                            }
+                            ProtocolMessage::Error { message } => {
+                                return Err(SyncError::HandshakeError(message));
+                            }
+                            _ => {
+                                return Err(SyncError::HandshakeError(format!(
+                                    "Unexpected message during handshake: {:?}",
+                                    msg
+                                )));
+                            }
+                        }
+                    }
+                    Ok(Message::Ping(data)) => {
+                        // Ping during handshake - we can't respond here easily
+                        // The server shouldn't ping during handshake
+                        let _ = data;
+                    }
+                    Ok(Message::Close(_)) => {
+                        return Err(SyncError::HandshakeError(
+                            "Server closed connection during handshake".to_string(),
+                        ));
+                    }
+                    Ok(_) => {
+                        // Ignore other message types
+                    }
+                    Err(e) => {
+                        return Err(SyncError::WebSocketError(e.to_string()));
+                    }
+                }
+            }
+            Err(SyncError::HandshakeError(
+                "Connection closed before handshake completed".to_string(),
+            ))
+        })
+        .await;
+
+        match peer_response {
+            Ok(result) => result,
+            Err(_) => Err(SyncError::HandshakeTimeout),
+        }
+    }
+
+    /// Syncs a single document over an established connection.
+    #[allow(clippy::too_many_arguments)]
+    async fn sync_document_over_connection<S, R>(
+        &self,
+        sender: &mut S,
+        receiver: &mut R,
+        doc_type: DocType,
+        doc_id: &str,
+        peer_id: &str,
+        server_peer_id: &str,
+        doc: &mut AutoCommit,
+    ) -> Result<SyncResult, SyncError>
+    where
+        S: SinkExt<Message> + Unpin,
+        S::Error: std::fmt::Display,
+        R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+    {
         let initial_heads = doc.get_heads().to_vec();
 
         // Initialize sync state
         let mut sync_state = SyncState::new();
         let mut rounds = 0;
+        let mut is_first_message = true;
 
         // Generate initial sync message
         if let Some(msg) = doc.sync().generate_sync_message(&mut sync_state) {
+            let protocol_msg = if std::mem::replace(&mut is_first_message, false) {
+                ProtocolMessage::Request {
+                    document_id: doc_id.to_string(),
+                    sender_id: peer_id.to_string(),
+                    target_id: server_peer_id.to_string(),
+                    data: msg.encode(),
+                }
+            } else {
+                ProtocolMessage::Sync {
+                    document_id: doc_id.to_string(),
+                    sender_id: peer_id.to_string(),
+                    target_id: server_peer_id.to_string(),
+                    data: msg.encode(),
+                }
+            };
+
+            let encoded = protocol_msg
+                .encode()
+                .map_err(|e| SyncError::CborError(e.to_string()))?;
+
             sender
-                .send(Message::Binary(msg.encode().into()))
+                .send(Message::Binary(encoded.into()))
                 .await
                 .map_err(|e| SyncError::WebSocketError(e.to_string()))?;
+
             rounds += 1;
         }
 
@@ -88,24 +374,71 @@ impl SyncClient {
         loop {
             match receiver.next().await {
                 Some(Ok(Message::Binary(data))) => {
-                    // Decode and apply server's sync message
-                    let msg = SyncMessage::decode(&data)
-                        .map_err(|e| SyncError::ProtocolError(e.to_string()))?;
+                    let msg = ProtocolMessage::decode(&data)
+                        .map_err(|e| SyncError::CborError(e.to_string()))?;
 
-                    doc.sync()
-                        .receive_sync_message(&mut sync_state, msg)
-                        .map_err(|e| SyncError::ProtocolError(e.to_string()))?;
+                    match msg {
+                        ProtocolMessage::Sync {
+                            document_id,
+                            data,
+                            sender_id: _,
+                            target_id: _,
+                        }
+                        | ProtocolMessage::Request {
+                            document_id,
+                            data,
+                            sender_id: _,
+                            target_id: _,
+                        } => {
+                            if document_id != doc_id {
+                                // Message for a different document - shouldn't happen
+                                // in sequential sync, but skip if it does
+                                continue;
+                            }
 
-                    // Generate response if needed
-                    if let Some(response) = doc.sync().generate_sync_message(&mut sync_state) {
-                        sender
-                            .send(Message::Binary(response.encode().into()))
-                            .await
-                            .map_err(|e| SyncError::WebSocketError(e.to_string()))?;
-                        rounds += 1;
-                    } else {
-                        // No more messages needed, sync complete
-                        break;
+                            // Decode and apply server's sync message
+                            let sync_msg = SyncMessage::decode(&data)
+                                .map_err(|e| SyncError::ProtocolError(e.to_string()))?;
+
+                            doc.sync()
+                                .receive_sync_message(&mut sync_state, sync_msg)
+                                .map_err(|e| SyncError::ProtocolError(e.to_string()))?;
+
+                            // Generate response if needed
+                            if let Some(response) =
+                                doc.sync().generate_sync_message(&mut sync_state)
+                            {
+                                let protocol_msg = ProtocolMessage::Sync {
+                                    document_id: doc_id.to_string(),
+                                    sender_id: peer_id.to_string(),
+                                    target_id: server_peer_id.to_string(),
+                                    data: response.encode(),
+                                };
+
+                                let encoded = protocol_msg
+                                    .encode()
+                                    .map_err(|e| SyncError::CborError(e.to_string()))?;
+
+                                sender
+                                    .send(Message::Binary(encoded.into()))
+                                    .await
+                                    .map_err(|e| SyncError::WebSocketError(e.to_string()))?;
+
+                                rounds += 1;
+                            } else {
+                                // No more messages needed, sync complete for this document
+                                break;
+                            }
+                        }
+                        ProtocolMessage::DocUnavailable { document_id, .. } => {
+                            return Err(SyncError::DocumentUnavailable(document_id));
+                        }
+                        ProtocolMessage::Error { message } => {
+                            return Err(SyncError::ProtocolError(message));
+                        }
+                        _ => {
+                            // Ignore other message types (Peer, Join - shouldn't happen here)
+                        }
                     }
                 }
                 Some(Ok(Message::Close(_))) => {
@@ -131,9 +464,6 @@ impl SyncClient {
             }
         }
 
-        // Close WebSocket gracefully
-        let _ = sender.send(Message::Close(None)).await;
-
         // Check if document was updated
         let final_heads = doc.get_heads().to_vec();
         let updated = initial_heads != final_heads;
@@ -145,14 +475,8 @@ impl SyncClient {
         })
     }
 
-    /// Builds the WebSocket URL for a document type.
-    pub fn build_ws_url(&self, doc_type: DocType) -> String {
-        let doc_type_str = match doc_type {
-            DocType::Dishes => "dishes",
-            DocType::MealPlans => "mealplans",
-            DocType::MealLogs => "meallogs",
-        };
-
+    /// Builds the WebSocket URL for the sync endpoint.
+    fn build_ws_url(&self) -> String {
         // Convert http(s) to ws(s) if needed
         let base_url = if self.server_url.starts_with("http://") {
             self.server_url.replace("http://", "ws://")
@@ -164,7 +488,25 @@ impl SyncClient {
             self.server_url.clone()
         };
 
-        format!("{}/sync/{}?key={}", base_url, doc_type_str, self.api_key)
+        format!("{}/sync?key={}", base_url, self.api_key)
+    }
+
+    /// Builds an HTTP URL for a given path.
+    fn build_http_url(&self, path: &str) -> String {
+        // Convert ws(s) to http(s) if needed
+        let base_url = if self.server_url.starts_with("ws://") {
+            self.server_url.replace("ws://", "http://")
+        } else if self.server_url.starts_with("wss://") {
+            self.server_url.replace("wss://", "https://")
+        } else if !self.server_url.starts_with("http://")
+            && !self.server_url.starts_with("https://")
+        {
+            format!("http://{}", self.server_url)
+        } else {
+            self.server_url.clone()
+        };
+
+        format!("{}{}", base_url.trim_end_matches('/'), path)
     }
 }
 
@@ -173,34 +515,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_ws_url_with_ws() {
+    fn test_build_ws_url() {
         let client = SyncClient::new("ws://localhost:8080".to_string(), "test-key".to_string());
-        let url = client.build_ws_url(DocType::Dishes);
-        assert_eq!(url, "ws://localhost:8080/sync/dishes?key=test-key");
-    }
+        assert_eq!(
+            client.build_ws_url(),
+            "ws://localhost:8080/sync?key=test-key"
+        );
 
-    #[test]
-    fn test_build_ws_url_with_http() {
         let client = SyncClient::new("http://localhost:8080".to_string(), "test-key".to_string());
-        let url = client.build_ws_url(DocType::Dishes);
-        assert_eq!(url, "ws://localhost:8080/sync/dishes?key=test-key");
-    }
+        assert_eq!(
+            client.build_ws_url(),
+            "ws://localhost:8080/sync?key=test-key"
+        );
 
-    #[test]
-    fn test_build_ws_url_with_https() {
         let client = SyncClient::new(
             "https://sync.example.com".to_string(),
             "test-key".to_string(),
         );
-        let url = client.build_ws_url(DocType::MealPlans);
-        assert_eq!(url, "wss://sync.example.com/sync/mealplans?key=test-key");
+        assert_eq!(
+            client.build_ws_url(),
+            "wss://sync.example.com/sync?key=test-key"
+        );
+
+        let client = SyncClient::new("localhost:8080".to_string(), "test-key".to_string());
+        assert_eq!(
+            client.build_ws_url(),
+            "ws://localhost:8080/sync?key=test-key"
+        );
     }
 
     #[test]
-    fn test_build_ws_url_bare_host() {
-        let client = SyncClient::new("localhost:8080".to_string(), "test-key".to_string());
-        let url = client.build_ws_url(DocType::MealLogs);
-        assert_eq!(url, "ws://localhost:8080/sync/meallogs?key=test-key");
+    fn test_build_http_url() {
+        let client = SyncClient::new("http://localhost:8080".to_string(), "test-key".to_string());
+        assert_eq!(client.build_http_url("/me"), "http://localhost:8080/me");
+
+        let client = SyncClient::new("ws://localhost:8080".to_string(), "test-key".to_string());
+        assert_eq!(client.build_http_url("/me"), "http://localhost:8080/me");
+
+        let client = SyncClient::new(
+            "https://sync.example.com".to_string(),
+            "test-key".to_string(),
+        );
+        assert_eq!(client.build_http_url("/me"), "https://sync.example.com/me");
+
+        let client = SyncClient::new("wss://sync.example.com".to_string(), "test-key".to_string());
+        assert_eq!(client.build_http_url("/me"), "https://sync.example.com/me");
     }
 
     #[test]

@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: Updated sync protocol** - Now uses automerge-repo WebSocket protocol
+  - Single WebSocket connection for all document types (was one per type)
+  - CBOR-encoded messages with handshake (join/peer) before sync
+  - Connects to `/sync?key=xxx` (was `/sync/:doc_type?key=xxx`)
+  - Requires todu-sync v0.10.0 or later
+
+### Added
+
+- Fetch user/group identity from server via `/me` endpoint
+- Deterministic document ID generation matching server algorithm
+- `Hash` derive for `DocType` enum
+
+### Dependencies
+
+- Added `ciborium` for CBOR encoding
+- Added `bs58` for base58 encoding
+- Added `sha2` for document ID hashing
+- Added `serde_bytes` for binary data serialization
+- Added `reqwest` for HTTP requests
+
 ## [0.9.0] - 2026-01-01
 
 ### Changed
