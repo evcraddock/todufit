@@ -1,9 +1,13 @@
 //! Sync CLI commands for synchronizing with the server.
 
+use automerge::AutoCommit;
 use clap::{Args, Subcommand};
 use sqlx::SqlitePool;
 
 use crate::config::Config;
+use crate::db::{DishRepository, MealLogRepository, MealPlanRepository};
+use crate::sync::storage::DocumentStorage;
+use crate::sync::writer::{write_dish, write_meallog, write_mealplan};
 use crate::sync::{DocType, SyncClient, SyncClientError};
 
 /// Sync with remote server
@@ -17,6 +21,11 @@ pub struct SyncCommand {
 enum SyncSubcommand {
     /// Show sync configuration and server status
     Status,
+    /// Rebuild automerge documents from SQLite database
+    ///
+    /// This recreates all local automerge documents from the data stored in SQLite.
+    /// Use this after schema changes that invalidate existing documents (e.g., document ID encoding changes).
+    Rebuild,
 }
 
 impl SyncCommand {
@@ -24,6 +33,7 @@ impl SyncCommand {
         match &self.command {
             None => self.sync(pool, config).await,
             Some(SyncSubcommand::Status) => self.status(config).await,
+            Some(SyncSubcommand::Rebuild) => self.rebuild(pool).await,
         }
     }
 
@@ -78,8 +88,8 @@ impl SyncCommand {
             println!("    auto_sync: false");
             println!();
             println!("Or set environment variables:");
-            println!("  TODUFIT_SYNC_URL");
-            println!("  TODUFIT_SYNC_API_KEY");
+            println!("  FIT_SYNC_URL");
+            println!("  FIT_SYNC_API_KEY");
             return Ok(());
         }
 
@@ -111,6 +121,85 @@ impl SyncCommand {
 
         Ok(())
     }
+
+    async fn rebuild(&self, pool: &SqlitePool) -> Result<(), SyncCommandError> {
+        let storage = DocumentStorage::new();
+
+        println!("Rebuilding automerge documents from SQLite...");
+        println!();
+
+        // Delete existing automerge files
+        for doc_type in [DocType::Dishes, DocType::MealPlans, DocType::MealLogs] {
+            let path = storage.path(doc_type);
+            if path.exists() {
+                std::fs::remove_file(&path).map_err(|e| {
+                    SyncCommandError::RebuildError(format!(
+                        "Failed to delete {}: {}",
+                        path.display(),
+                        e
+                    ))
+                })?;
+                println!("  Deleted old {}", doc_type_name(doc_type));
+            }
+        }
+
+        // Rebuild dishes document
+        let dish_repo = DishRepository::new(pool.clone());
+        let dishes = dish_repo
+            .list()
+            .await
+            .map_err(|e| SyncCommandError::RebuildError(format!("Failed to list dishes: {}", e)))?;
+
+        let mut dishes_doc = AutoCommit::new();
+        for dish in &dishes {
+            write_dish(&mut dishes_doc, dish);
+        }
+        storage
+            .save(DocType::Dishes, &mut dishes_doc)
+            .map_err(|e| {
+                SyncCommandError::RebuildError(format!("Failed to save dishes doc: {}", e))
+            })?;
+        println!("  ✓ Rebuilt dishes ({} items)", dishes.len());
+
+        // Rebuild mealplans document
+        let mealplan_repo = MealPlanRepository::new(pool.clone());
+        let mealplans = mealplan_repo.list().await.map_err(|e| {
+            SyncCommandError::RebuildError(format!("Failed to list mealplans: {}", e))
+        })?;
+
+        let mut mealplans_doc = AutoCommit::new();
+        for mealplan in &mealplans {
+            write_mealplan(&mut mealplans_doc, mealplan);
+        }
+        storage
+            .save(DocType::MealPlans, &mut mealplans_doc)
+            .map_err(|e| {
+                SyncCommandError::RebuildError(format!("Failed to save mealplans doc: {}", e))
+            })?;
+        println!("  ✓ Rebuilt mealplans ({} items)", mealplans.len());
+
+        // Rebuild meallogs document
+        let meallog_repo = MealLogRepository::new(pool.clone());
+        let meallogs = meallog_repo.list().await.map_err(|e| {
+            SyncCommandError::RebuildError(format!("Failed to list meallogs: {}", e))
+        })?;
+
+        let mut meallogs_doc = AutoCommit::new();
+        for meallog in &meallogs {
+            write_meallog(&mut meallogs_doc, meallog);
+        }
+        storage
+            .save(DocType::MealLogs, &mut meallogs_doc)
+            .map_err(|e| {
+                SyncCommandError::RebuildError(format!("Failed to save meallogs doc: {}", e))
+            })?;
+        println!("  ✓ Rebuilt meallogs ({} items)", meallogs.len());
+
+        println!();
+        println!("Rebuild complete. Run 'fit sync' to sync with server.");
+
+        Ok(())
+    }
 }
 
 fn doc_type_name(doc_type: DocType) -> &'static str {
@@ -125,12 +214,14 @@ fn doc_type_name(doc_type: DocType) -> &'static str {
 #[derive(Debug)]
 pub enum SyncCommandError {
     SyncError(SyncClientError),
+    RebuildError(String),
 }
 
 impl std::fmt::Display for SyncCommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SyncCommandError::SyncError(e) => write!(f, "{}", e),
+            SyncCommandError::RebuildError(e) => write!(f, "Rebuild error: {}", e),
         }
     }
 }
@@ -139,6 +230,7 @@ impl std::error::Error for SyncCommandError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             SyncCommandError::SyncError(e) => Some(e),
+            SyncCommandError::RebuildError(_) => None,
         }
     }
 }

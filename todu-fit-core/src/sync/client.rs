@@ -186,6 +186,14 @@ impl SyncClient {
             results.push(result);
         }
 
+        // Send Leave message before closing
+        let leave_msg = ProtocolMessage::Leave {
+            sender_id: peer_id.clone(),
+        };
+        if let Ok(encoded) = leave_msg.encode() {
+            let _ = sender.send(Message::Binary(encoded.into())).await;
+        }
+
         // Close WebSocket gracefully
         let _ = sender.send(Message::Close(None)).await;
 
@@ -338,37 +346,39 @@ impl SyncClient {
         // Initialize sync state
         let mut sync_state = SyncState::new();
         let mut rounds = 0;
-        let mut is_first_message = true;
 
-        // Generate initial sync message
-        if let Some(msg) = doc.sync().generate_sync_message(&mut sync_state) {
-            let protocol_msg = if std::mem::replace(&mut is_first_message, false) {
-                ProtocolMessage::Request {
-                    document_id: doc_id.to_string(),
-                    sender_id: peer_id.to_string(),
-                    target_id: server_peer_id.to_string(),
-                    data: msg.encode(),
-                }
-            } else {
-                ProtocolMessage::Sync {
-                    document_id: doc_id.to_string(),
-                    sender_id: peer_id.to_string(),
-                    target_id: server_peer_id.to_string(),
-                    data: msg.encode(),
-                }
-            };
+        // Get doc_type string for protocol
+        let doc_type_str = match doc_type {
+            DocType::Dishes => "dishes",
+            DocType::MealPlans => "mealplans",
+            DocType::MealLogs => "meallogs",
+        };
 
-            let encoded = protocol_msg
-                .encode()
-                .map_err(|e| SyncError::CborError(e.to_string()))?;
+        // Generate initial sync message - always send Request even if no sync data
+        let sync_data = doc
+            .sync()
+            .generate_sync_message(&mut sync_state)
+            .map(|m| m.encode())
+            .unwrap_or_default();
 
-            sender
-                .send(Message::Binary(encoded.into()))
-                .await
-                .map_err(|e| SyncError::WebSocketError(e.to_string()))?;
+        let protocol_msg = ProtocolMessage::Request {
+            document_id: doc_id.to_string(),
+            sender_id: peer_id.to_string(),
+            target_id: server_peer_id.to_string(),
+            doc_type: doc_type_str.to_string(),
+            data: sync_data,
+        };
 
-            rounds += 1;
-        }
+        let encoded = protocol_msg
+            .encode()
+            .map_err(|e| SyncError::CborError(e.to_string()))?;
+
+        sender
+            .send(Message::Binary(encoded.into()))
+            .await
+            .map_err(|e| SyncError::WebSocketError(e.to_string()))?;
+
+        rounds += 1;
 
         // Sync loop
         loop {
@@ -389,6 +399,7 @@ impl SyncClient {
                             data,
                             sender_id: _,
                             target_id: _,
+                            doc_type: _,
                         } => {
                             if document_id != doc_id {
                                 // Message for a different document - shouldn't happen
