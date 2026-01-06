@@ -6,7 +6,7 @@ description = "Core library for Todu Fit - shared models and sync logic"
 
 [dependencies]
 automerge = "0.7"
-bs58 = "0.5"
+bs58 = { version = "0.5", features = ["check"] }
 chrono = { version = "0.4", features = ["serde"] }
 ciborium = "0.2"
 futures = "0.3"

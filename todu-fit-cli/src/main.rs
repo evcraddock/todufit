@@ -60,6 +60,9 @@ async fn main() {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    // Save config path for init command
+    let cli_config_path = cli.config.clone();
+
     // Load configuration
     let config = Config::load(cli.config)?;
 
@@ -113,7 +116,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             pool_for_sync = Some(pool);
         }
         Some(Commands::Config(cmd)) => {
-            cmd.run(&config)?;
+            cmd.run(&config, cli_config_path)?;
         }
         Some(Commands::Sync(cmd)) => {
             let pool = init_db(Some(config.database_path.value.clone())).await?;

@@ -1,6 +1,6 @@
-database_path: hack/fit.db
+database_path: /home/erik/Private/code/github/evcraddock/todu-fit/hack/fit.db
 created_by: dev
 sync:
   server_url: ws://localhost:8080
-  api_key: rYjti8F7AMmmko479exoZmzq7xWWknKOx2YCfd_h5eg
+  api_key: 6s9xO-cZB6WRU9p9x5b9xALP-Dn9khUy6DvQflKvmrw
   auto_sync: true

@@ -31,7 +31,11 @@ pub enum ConfigSubcommand {
 }
 
 impl ConfigCommand {
-    pub fn run(&self, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run(
+        &self,
+        config: &Config,
+        cli_config_path: Option<std::path::PathBuf>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match &self.command {
             ConfigSubcommand::Show { format } => {
                 match format {
@@ -64,7 +68,10 @@ impl ConfigCommand {
             }
 
             ConfigSubcommand::Init => {
-                let config_path = Config::default_config_path();
+                // Use CLI path if provided, otherwise use loaded config path or default
+                let config_path = cli_config_path
+                    .or_else(|| config.config_file.clone())
+                    .unwrap_or_else(Config::default_config_path);
 
                 // Check if config already exists
                 if config_path.exists() {
@@ -78,21 +85,37 @@ impl ConfigCommand {
                     fs::create_dir_all(parent)?;
                 }
 
-                // Write default config
-                let default_config = r#"# fit configuration
+                // Get absolute database path
+                let db_path = std::fs::canonicalize(&config.database_path.value)
+                    .unwrap_or_else(|_| config.database_path.value.clone());
 
-# Path to SQLite database (default: ~/.local/share/fit/fit.db)
-# database_path: ~/.local/share/fit/fit.db
+                // Write config with absolute database path
+                let config_content = format!(
+                    r#"# fit configuration
+
+# Path to SQLite database
+database_path: {}
 
 # Default user name for new dishes
-created_by: default
-"#;
+created_by: {}
+
+# Sync configuration (uncomment and fill in to enable)
+# sync:
+#   server_url: ws://localhost:8080
+#   api_key: your-api-key-here
+#   auto_sync: false
+"#,
+                    db_path.display(),
+                    config.created_by.value
+                );
 
                 let mut file = fs::File::create(&config_path)?;
-                file.write_all(default_config.as_bytes())?;
+                file.write_all(config_content.as_bytes())?;
 
                 println!("Created config file: {}", config_path.display());
-                println!("\nEdit this file to customize your settings.");
+                println!("\nConfiguration:");
+                println!("  database_path: {}", db_path.display());
+                println!("  created_by: {}", config.created_by.value);
                 Ok(())
             }
         }

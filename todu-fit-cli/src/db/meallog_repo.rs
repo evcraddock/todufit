@@ -101,6 +101,19 @@ impl MealLogRepository {
         }
     }
 
+    pub async fn list(&self) -> Result<Vec<MealLog>, sqlx::Error> {
+        let rows: Vec<MealLogRow> =
+            sqlx::query_as("SELECT * FROM meallogs ORDER BY date DESC, meal_type")
+                .fetch_all(&self.pool)
+                .await?;
+
+        let mut logs = Vec::with_capacity(rows.len());
+        for row in rows {
+            logs.push(self.hydrate_meallog(row).await?);
+        }
+        Ok(logs)
+    }
+
     pub async fn list_range(
         &self,
         from: NaiveDate,

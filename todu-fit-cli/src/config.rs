@@ -95,10 +95,16 @@ impl Config {
             let file_config: ConfigFile = serde_yaml::from_str(&contents)
                 .map_err(|e| ConfigError::ParseError(path.clone(), e))?;
 
-            config_file = Some(path);
+            config_file = Some(path.clone());
 
             if let Some(db_path) = file_config.database_path {
-                database_path = ConfigValue::new(db_path, ConfigSource::File);
+                // Resolve relative paths against config file's directory
+                let resolved_path = if db_path.is_relative() {
+                    path.parent().map(|p| p.join(&db_path)).unwrap_or(db_path)
+                } else {
+                    db_path
+                };
+                database_path = ConfigValue::new(resolved_path, ConfigSource::File);
             }
             if let Some(user) = file_config.created_by {
                 created_by = ConfigValue::new(user, ConfigSource::File);
