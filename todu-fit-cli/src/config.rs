@@ -211,14 +211,16 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("config.yaml");
 
+        // Use relative path - works cross-platform and tests path resolution
         let mut file = std::fs::File::create(&config_path).unwrap();
-        writeln!(file, "database_path: /custom/path/db.sqlite").unwrap();
+        writeln!(file, "database_path: data/db.sqlite").unwrap();
         writeln!(file, "created_by: testuser").unwrap();
 
         let config = Config::load(Some(config_path.clone())).unwrap();
+        // Relative path should be resolved against config file directory
         assert_eq!(
             config.database_path.value,
-            PathBuf::from("/custom/path/db.sqlite")
+            temp_dir.path().join("data/db.sqlite")
         );
         assert_eq!(config.database_path.source, ConfigSource::File);
         assert_eq!(config.created_by.value, "testuser");
