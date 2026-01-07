@@ -83,23 +83,50 @@ impl DishProjection {
     }
 
     /// Extracts all dishes from an Automerge document.
+    ///
+    /// Handles two document structures:
+    /// - CLI structure: root[uuid] = dish object
+    /// - Web structure: root.dishes[uuid] = dish object
     fn extract_dishes(doc: &AutoCommit) -> Result<Vec<Dish>, ProjectionError> {
-        let mut dishes = Vec::new();
+        use std::collections::HashMap;
+        let mut dishes_map: HashMap<Uuid, Dish> = HashMap::new();
 
-        // Iterate over all keys at the root (each key is a dish UUID)
-        for key in doc.keys(ROOT) {
-            if let Some((value, obj_id)) = doc.get(ROOT, &key).map_err(|e| {
-                ProjectionError::AutomergeError(format!("Failed to get key {}: {}", key, e))
-            })? {
-                // Only process object values (maps)
-                if value.is_object() {
-                    let dish = Self::extract_dish(doc, &obj_id, &key)?;
-                    dishes.push(dish);
-                }
+        // Extract dishes from root level (CLI structure: root[uuid])
+        Self::extract_dishes_from_container(doc, ROOT, &mut dishes_map)?;
+
+        // Extract dishes from nested "dishes" container (Web structure: root.dishes[uuid])
+        if let Ok(Some((value, dishes_obj))) = doc.get(ROOT, "dishes") {
+            if value.is_object() {
+                Self::extract_dishes_from_container(doc, dishes_obj, &mut dishes_map)?;
             }
         }
 
-        Ok(dishes)
+        Ok(dishes_map.into_values().collect())
+    }
+
+    /// Extracts dishes from a container object (either root or root.dishes).
+    fn extract_dishes_from_container(
+        doc: &AutoCommit,
+        container: ObjId,
+        dishes_map: &mut std::collections::HashMap<Uuid, Dish>,
+    ) -> Result<(), ProjectionError> {
+        for key in doc.keys(container.clone()) {
+            // Skip non-UUID keys (like "dishes" container itself)
+            if Uuid::parse_str(&key).is_err() {
+                continue;
+            }
+
+            if let Some((value, obj_id)) = doc.get(container.clone(), &key).map_err(|e| {
+                ProjectionError::AutomergeError(format!("Failed to get key {}: {}", key, e))
+            })? {
+                if value.is_object() {
+                    let dish = Self::extract_dish(doc, &obj_id, &key)?;
+                    // Use HashMap to dedupe - later entries overwrite earlier ones
+                    dishes_map.insert(dish.id, dish);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Extracts a single dish from an Automerge object.
@@ -222,16 +249,27 @@ impl DishProjection {
     }
 
     /// Helper to get a string value from an Automerge object.
+    /// Handles both scalar strings and Text objects.
     fn get_string(
         doc: &AutoCommit,
         obj_id: &ObjId,
         key: &str,
     ) -> Result<Option<String>, ProjectionError> {
-        if let Some((value, _)) = doc
+        if let Some((value, value_obj_id)) = doc
             .get(obj_id, key)
             .map_err(|e| ProjectionError::AutomergeError(e.to_string()))?
         {
-            Ok(value.into_string().ok())
+            // First try as scalar string
+            if let Ok(s) = value.clone().into_string() {
+                return Ok(Some(s));
+            }
+            // If it's a Text object, read it using text()
+            if value.is_object() {
+                if let Ok(text) = doc.text(&value_obj_id) {
+                    return Ok(Some(text.to_string()));
+                }
+            }
+            Ok(None)
         } else {
             Ok(None)
         }
@@ -493,16 +531,28 @@ impl MealPlanProjection {
         Ok(dish_ids)
     }
 
+    /// Helper to get a string value from an Automerge object.
+    /// Handles both scalar strings and Text objects.
     fn get_string(
         doc: &AutoCommit,
         obj_id: &ObjId,
         key: &str,
     ) -> Result<Option<String>, ProjectionError> {
-        if let Some((value, _)) = doc
+        if let Some((value, value_obj_id)) = doc
             .get(obj_id, key)
             .map_err(|e| ProjectionError::AutomergeError(e.to_string()))?
         {
-            Ok(value.into_string().ok())
+            // First try as scalar string
+            if let Ok(s) = value.clone().into_string() {
+                return Ok(Some(s));
+            }
+            // If it's a Text object, read it using text()
+            if value.is_object() {
+                if let Ok(text) = doc.text(&value_obj_id) {
+                    return Ok(Some(text.to_string()));
+                }
+            }
+            Ok(None)
         } else {
             Ok(None)
         }
@@ -684,16 +734,28 @@ impl MealLogProjection {
         Ok(dish_ids)
     }
 
+    /// Helper to get a string value from an Automerge object.
+    /// Handles both scalar strings and Text objects.
     fn get_string(
         doc: &AutoCommit,
         obj_id: &ObjId,
         key: &str,
     ) -> Result<Option<String>, ProjectionError> {
-        if let Some((value, _)) = doc
+        if let Some((value, value_obj_id)) = doc
             .get(obj_id, key)
             .map_err(|e| ProjectionError::AutomergeError(e.to_string()))?
         {
-            Ok(value.into_string().ok())
+            // First try as scalar string
+            if let Ok(s) = value.clone().into_string() {
+                return Ok(Some(s));
+            }
+            // If it's a Text object, read it using text()
+            if value.is_object() {
+                if let Ok(text) = doc.text(&value_obj_id) {
+                    return Ok(Some(text.to_string()));
+                }
+            }
+            Ok(None)
         } else {
             Ok(None)
         }
