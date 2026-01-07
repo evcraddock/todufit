@@ -92,6 +92,7 @@ impl SyncMealPlanRepository {
     }
 
     /// Creates a new sync meal plan repository with custom storage.
+    #[cfg(test)]
     pub fn with_storage(storage: DocumentStorage, pool: SqlitePool) -> Self {
         Self { storage, pool }
     }
@@ -261,12 +262,6 @@ impl SyncMealPlanRepository {
         Ok(repo.get_by_date_and_type(date, meal_type).await?)
     }
 
-    /// Lists all meal plans.
-    pub async fn list(&self) -> Result<Vec<MealPlan>, SyncMealPlanError> {
-        let repo = MealPlanRepository::new(self.pool.clone());
-        Ok(repo.list().await?)
-    }
-
     /// Lists meal plans in a date range.
     pub async fn list_range(
         &self,
@@ -321,7 +316,7 @@ mod tests {
             .await
             .unwrap();
 
-        let plans = repo.list().await.unwrap();
+        let plans = repo.list_range(date1, date2).await.unwrap();
         assert_eq!(plans.len(), 2);
     }
 

@@ -54,6 +54,7 @@ impl MealLogRepository {
         Self { pool }
     }
 
+    #[cfg(test)]
     pub async fn create(&self, log: &MealLog) -> Result<MealLog, sqlx::Error> {
         let id = log.id.to_string();
         let date = log.date.to_string();
@@ -137,6 +138,7 @@ impl MealLogRepository {
         Ok(logs)
     }
 
+    #[cfg(test)]
     pub async fn delete(&self, id: Uuid) -> Result<(), sqlx::Error> {
         let id_str = id.to_string();
         sqlx::query("DELETE FROM meallogs WHERE id = ?")
@@ -146,6 +148,7 @@ impl MealLogRepository {
         Ok(())
     }
 
+    #[cfg(test)]
     pub async fn add_dish(&self, meallog_id: Uuid, dish_id: Uuid) -> Result<(), sqlx::Error> {
         let meallog_id_str = meallog_id.to_string();
         let dish_id_str = dish_id.to_string();
@@ -158,6 +161,7 @@ impl MealLogRepository {
         Ok(())
     }
 
+    #[cfg(test)]
     pub async fn remove_dish(&self, meallog_id: Uuid, dish_id: Uuid) -> Result<(), sqlx::Error> {
         let meallog_id_str = meallog_id.to_string();
         let dish_id_str = dish_id.to_string();

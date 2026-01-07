@@ -269,15 +269,22 @@ impl MealPlanCommand {
                         None => vec![],
                     }
                 } else if let Ok(date) = NaiveDate::parse_from_str(identifier, "%Y-%m-%d") {
-                    // It's a date - get plans for that date
-                    let mut plans = mealplan_repo.get_by_date(date).await?;
-
-                    // Filter by meal type if provided
                     if let Some(mt) = meal_type {
                         let meal_type_filter: MealType = mt.parse().map_err(|e: String| e)?;
-                        plans.retain(|p| p.meal_type == meal_type_filter);
+                        match mealplan_repo
+                            .get_by_date_and_type(date, meal_type_filter)
+                            .await?
+                        {
+                            Some(plan) => vec![plan],
+                            None => {
+                                return Err(
+                                    format!("No {} meal plan found for date {}", mt, date).into()
+                                )
+                            }
+                        }
+                    } else {
+                        mealplan_repo.get_by_date(date).await?
                     }
-                    plans
                 } else {
                     return Err(format!(
                         "Invalid identifier '{}'. Use UUID or date (YYYY-MM-DD).",

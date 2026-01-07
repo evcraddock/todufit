@@ -79,6 +79,7 @@ impl SyncClient {
     }
 
     /// Creates a new sync client with explicit parameters.
+    #[cfg(test)]
     pub fn new(server_url: String, api_key: String) -> Self {
         Self {
             core: CoreSyncClient::new(server_url, api_key),

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Automerge document schemas for Todu Fit entities.
 //!
 //! Each document type wraps an Automerge document and provides type-safe
@@ -63,6 +65,8 @@
 //!   ...
 //! }
 //! ```
+
+#![cfg_attr(not(test), allow(dead_code))]
 
 use automerge::{AutoCommit, ReadDoc};
 

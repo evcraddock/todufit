@@ -79,6 +79,7 @@ impl SyncMealLogRepository {
     }
 
     /// Creates a new sync meal log repository with custom storage.
+    #[cfg(test)]
     pub fn with_storage(storage: DocumentStorage, pool: SqlitePool) -> Self {
         Self { storage, pool }
     }
@@ -119,6 +120,7 @@ impl SyncMealLogRepository {
     }
 
     /// Deletes a meal log.
+    #[cfg(test)]
     pub async fn delete(&self, id: Uuid) -> Result<(), SyncMealLogError> {
         let mut doc = self.load_or_create_doc()?;
 

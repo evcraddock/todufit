@@ -26,6 +26,7 @@ pub mod dish_sync;
 pub mod meallog_sync;
 pub mod mealplan_sync;
 pub mod projection;
+#[cfg(test)]
 pub mod schema;
 pub mod storage;
 pub mod writer;

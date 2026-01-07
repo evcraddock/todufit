@@ -20,6 +20,8 @@ use crate::automerge::DocType;
 
 /// Timeout for handshake completion.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long to wait for any activity on a document before checking exit conditions.
+const DOC_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Result of a sync operation for a single document type.
 #[derive(Debug, Clone)]
@@ -382,8 +384,8 @@ impl SyncClient {
 
         // Sync loop
         loop {
-            match receiver.next().await {
-                Some(Ok(Message::Binary(data))) => {
+            match timeout(DOC_IDLE_TIMEOUT, receiver.next()).await {
+                Ok(Some(Ok(Message::Binary(data)))) => {
                     let msg = ProtocolMessage::decode(&data)
                         .map_err(|e| SyncError::CborError(e.to_string()))?;
 
@@ -452,24 +454,28 @@ impl SyncClient {
                         }
                     }
                 }
-                Some(Ok(Message::Close(_))) => {
+                Ok(Some(Ok(Message::Close(_)))) => {
                     // Server closed connection
                     break;
                 }
-                Some(Ok(Message::Ping(data))) => {
+                Ok(Some(Ok(Message::Ping(data)))) => {
                     sender
                         .send(Message::Pong(data))
                         .await
                         .map_err(|e| SyncError::WebSocketError(e.to_string()))?;
                 }
-                Some(Ok(_)) => {
+                Ok(Some(Ok(_))) => {
                     // Ignore other message types
                 }
-                Some(Err(e)) => {
+                Ok(Some(Err(e))) => {
                     return Err(SyncError::WebSocketError(e.to_string()));
                 }
-                None => {
+                Ok(None) => {
                     // Connection closed
+                    break;
+                }
+                Err(_) => {
+                    // No activity during idle window - assume sync complete
                     break;
                 }
             }

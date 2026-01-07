@@ -44,6 +44,7 @@ impl DishRepository {
         Self { pool }
     }
 
+    #[cfg(test)]
     pub async fn create(&self, dish: &Dish) -> Result<Dish, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
@@ -148,6 +149,7 @@ impl DishRepository {
         Ok(dishes)
     }
 
+    #[cfg(test)]
     pub async fn update(&self, dish: &Dish) -> Result<Dish, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
@@ -221,6 +223,7 @@ impl DishRepository {
             .ok_or_else(|| sqlx::Error::RowNotFound)
     }
 
+    #[cfg(test)]
     pub async fn delete(&self, id: Uuid) -> Result<(), sqlx::Error> {
         let id_str = id.to_string();
         // CASCADE will handle ingredients and nutrients
@@ -231,6 +234,7 @@ impl DishRepository {
         Ok(())
     }
 
+    #[cfg(test)]
     pub async fn add_ingredient(
         &self,
         dish_id: Uuid,
@@ -247,6 +251,7 @@ impl DishRepository {
         Ok(())
     }
 
+    #[cfg(test)]
     pub async fn remove_ingredient(
         &self,
         dish_id: Uuid,

@@ -21,6 +21,7 @@ impl DocumentStorage {
     }
 
     /// Creates a new storage instance with a custom data directory.
+    #[cfg(test)]
     pub fn with_data_dir(data_dir: PathBuf) -> Self {
         Self(CoreDocumentStorage::new(data_dir))
     }
@@ -31,6 +32,7 @@ impl DocumentStorage {
     }
 
     /// Checks if a document exists on disk.
+    #[cfg(test)]
     pub fn exists(&self, doc_type: DocType) -> bool {
         self.0.exists(doc_type)
     }
@@ -38,11 +40,6 @@ impl DocumentStorage {
     /// Loads a document from disk.
     pub fn load(&self, doc_type: DocType) -> Result<Option<automerge::AutoCommit>, StorageError> {
         self.0.load(doc_type)
-    }
-
-    /// Loads a document or creates a new one if it doesn't exist.
-    pub fn load_or_create(&self, doc_type: DocType) -> Result<automerge::AutoCommit, StorageError> {
-        self.0.load_or_create(doc_type)
     }
 
     /// Saves a document to disk.

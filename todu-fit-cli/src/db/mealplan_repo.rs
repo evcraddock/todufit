@@ -55,6 +55,7 @@ impl MealPlanRepository {
         Self { pool }
     }
 
+    #[cfg(test)]
     pub async fn create(&self, mealplan: &MealPlan) -> Result<MealPlan, sqlx::Error> {
         let id = mealplan.id.to_string();
         let date = mealplan.date.to_string();
@@ -176,6 +177,7 @@ impl MealPlanRepository {
         Ok(plans)
     }
 
+    #[cfg(test)]
     pub async fn update(&self, mealplan: &MealPlan) -> Result<MealPlan, sqlx::Error> {
         let id = mealplan.id.to_string();
         let date = mealplan.date.to_string();
@@ -203,6 +205,7 @@ impl MealPlanRepository {
             .ok_or_else(|| sqlx::Error::RowNotFound)
     }
 
+    #[cfg(test)]
     pub async fn delete(&self, id: Uuid) -> Result<(), sqlx::Error> {
         let id_str = id.to_string();
         sqlx::query("DELETE FROM mealplans WHERE id = ?")
@@ -212,6 +215,7 @@ impl MealPlanRepository {
         Ok(())
     }
 
+    #[cfg(test)]
     pub async fn add_dish(&self, mealplan_id: Uuid, dish_id: Uuid) -> Result<(), sqlx::Error> {
         let mealplan_id_str = mealplan_id.to_string();
         let dish_id_str = dish_id.to_string();
@@ -224,6 +228,7 @@ impl MealPlanRepository {
         Ok(())
     }
 
+    #[cfg(test)]
     pub async fn remove_dish(&self, mealplan_id: Uuid, dish_id: Uuid) -> Result<(), sqlx::Error> {
         let mealplan_id_str = mealplan_id.to_string();
         let dish_id_str = dish_id.to_string();

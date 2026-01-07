@@ -77,6 +77,7 @@ impl SyncDishRepository {
     }
 
     /// Creates a new sync dish repository with custom storage.
+    #[cfg(test)]
     pub fn with_storage(storage: DocumentStorage, pool: SqlitePool) -> Self {
         Self { storage, pool }
     }
