@@ -1,4 +1,4 @@
-.PHONY: help build test lint clean dev dev-stop dev-status svc-start svc-stop
+.PHONY: help build test lint clean dev dev-logs dev-stop dev-status svc-start svc-stop
 
 help: ## Display this help message
 	@echo "Available targets:"
@@ -46,6 +46,13 @@ dev-stop: ## Stop development environment
 		echo "✅ Development environment stopped!"; \
 	else \
 		echo "⚠️  Development environment is not running"; \
+	fi
+
+dev-logs: ## Tail development logs
+	@if [ -f dev.log ]; then \
+		tail -f dev.log; \
+	else \
+		echo "⚠️  No dev.log file found. Start the dev environment first with 'make dev'"; \
 	fi
 
 dev-status: ## Check development environment status
