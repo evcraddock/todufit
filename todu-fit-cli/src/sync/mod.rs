@@ -23,6 +23,7 @@
 
 pub mod client;
 pub mod dish_sync;
+pub mod group_context;
 pub mod meallog_sync;
 pub mod mealplan_sync;
 pub mod reader;
