@@ -7,7 +7,8 @@ mod models;
 mod sync;
 
 use commands::{
-    meal::MealRepos, ConfigCommand, DishCommand, MealCommand, MealPlanCommand, SyncCommand,
+    meal::MealRepos, ConfigCommand, DeviceCommand, DishCommand, GroupCommand, InitCommand,
+    MealCommand, MealPlanCommand, SyncCommand,
 };
 use config::Config;
 use sync::{SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
@@ -27,6 +28,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize identity (new or join existing)
+    Init(InitCommand),
+
+    /// Show device identity for sharing
+    Device(DeviceCommand),
+
+    /// Manage groups for shared dishes and meal plans
+    Group(GroupCommand),
+
     /// Manage dishes (recipes)
     Dish(DishCommand),
 
@@ -60,6 +70,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load(cli.config)?;
 
     match cli.command {
+        Some(Commands::Init(cmd)) => {
+            cmd.run(&config)?;
+        }
+        Some(Commands::Device(cmd)) => {
+            cmd.run(&config)?;
+        }
+        Some(Commands::Group(cmd)) => {
+            cmd.run(&config)?;
+        }
         Some(Commands::Dish(cmd)) => {
             let repo = SyncDishRepository::new();
             cmd.run(&repo, &config)?;
