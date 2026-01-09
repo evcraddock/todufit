@@ -161,7 +161,7 @@ impl SyncMealPlanRepository {
         Ok(())
     }
 
-    /// Adds a dish to a meal plan.
+    /// Adds a dish to a meal plan by ID.
     pub async fn add_dish(
         &self,
         mealplan_id: Uuid,
@@ -173,7 +173,7 @@ impl SyncMealPlanRepository {
             .await?
             .ok_or_else(|| SyncMealPlanError::NotFound(mealplan_id.to_string()))?;
 
-        // Get the dish from SQLite
+        // Get the dish from SQLite to verify it exists and get name for error
         let dish_repo = DishRepository::new(self.pool.clone());
         let dish = dish_repo
             .get_by_id(dish_id)
@@ -181,13 +181,12 @@ impl SyncMealPlanRepository {
             .ok_or_else(|| SyncMealPlanError::DishNotFound(dish_id.to_string()))?;
 
         // Check if already in plan
-        if mealplan.dishes.iter().any(|d| d.id == dish_id) {
+        if mealplan.dish_ids.contains(&dish_id) {
             return Err(SyncMealPlanError::DishAlreadyInPlan(dish.name));
         }
 
-        // Add the dish
-        mealplan.dishes.push(dish);
-        mealplan.updated_at = chrono::Utc::now();
+        // Add the dish ID
+        mealplan.add_dish(dish_id);
 
         // Update via Automerge
         self.update(&mealplan).await?;
@@ -195,7 +194,7 @@ impl SyncMealPlanRepository {
         Ok(())
     }
 
-    /// Removes a dish from a meal plan.
+    /// Removes a dish from a meal plan by ID.
     pub async fn remove_dish(
         &self,
         mealplan_id: Uuid,
@@ -208,34 +207,24 @@ impl SyncMealPlanRepository {
             .ok_or_else(|| SyncMealPlanError::NotFound(mealplan_id.to_string()))?;
 
         // Check if dish is in plan
-        let dish_name = mealplan
-            .dishes
-            .iter()
-            .find(|d| d.id == dish_id)
-            .map(|d| d.name.clone());
-
-        match dish_name {
-            Some(_) => {
-                // Remove the dish
-                mealplan.dishes.retain(|d| d.id != dish_id);
-                mealplan.updated_at = chrono::Utc::now();
-
-                // Update via Automerge
-                self.update(&mealplan).await?;
-
-                Ok(())
-            }
-            None => {
-                // Get dish name for error message
-                let dish_repo = DishRepository::new(self.pool.clone());
-                let name = dish_repo
-                    .get_by_id(dish_id)
-                    .await?
-                    .map(|d| d.name)
-                    .unwrap_or_else(|| dish_id.to_string());
-                Err(SyncMealPlanError::DishNotInPlan(name))
-            }
+        if !mealplan.dish_ids.contains(&dish_id) {
+            // Get dish name for error message
+            let dish_repo = DishRepository::new(self.pool.clone());
+            let name = dish_repo
+                .get_by_id(dish_id)
+                .await?
+                .map(|d| d.name)
+                .unwrap_or_else(|| dish_id.to_string());
+            return Err(SyncMealPlanError::DishNotInPlan(name));
         }
+
+        // Remove the dish ID
+        mealplan.remove_dish(&dish_id);
+
+        // Update via Automerge
+        self.update(&mealplan).await?;
+
+        Ok(())
     }
 
     // ========== Read operations (from SQLite) ==========
@@ -367,8 +356,8 @@ mod tests {
         mealplan_repo.add_dish(plan.id, dish.id).await.unwrap();
 
         let updated = mealplan_repo.get_by_id(plan.id).await.unwrap().unwrap();
-        assert_eq!(updated.dishes.len(), 1);
-        assert_eq!(updated.dishes[0].name, "Pasta");
+        assert_eq!(updated.dish_ids.len(), 1);
+        assert_eq!(updated.dish_ids[0], dish.id);
     }
 
     #[tokio::test]
@@ -409,7 +398,7 @@ mod tests {
         mealplan_repo.remove_dish(plan.id, dish.id).await.unwrap();
 
         let updated = mealplan_repo.get_by_id(plan.id).await.unwrap().unwrap();
-        assert!(updated.dishes.is_empty());
+        assert!(updated.dish_ids.is_empty());
     }
 
     #[tokio::test]

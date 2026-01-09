@@ -6,13 +6,20 @@ use uuid::Uuid;
 use super::dish::Dish;
 use super::meal_type::MealType;
 
-/// A meal log represents what was actually eaten (vs MealPlan which is planned)
+/// A meal log represents what was actually eaten (vs MealPlan which is planned).
+///
+/// Meal logs contain dish **snapshots** (full copies of dish data at the time
+/// of logging) rather than references. This ensures historical accuracy - even
+/// if a dish is later modified or deleted, the meal log retains exactly what
+/// was eaten at that time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MealLog {
     pub id: Uuid,
     pub date: NaiveDate,
     pub meal_type: MealType,
     pub mealplan_id: Option<Uuid>,
+    /// Dish snapshots - full copies of dishes as they were when logged.
+    /// These are not references; modifying the original dish won't affect logs.
     pub dishes: Vec<Dish>,
     pub notes: Option<String>,
     pub created_by: String,

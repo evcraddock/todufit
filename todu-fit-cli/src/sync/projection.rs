@@ -494,21 +494,21 @@ impl MealPlanProjection {
                 meal_type,
                 title,
                 cook,
-                dishes: Vec::new(), // Dishes are referenced by ID in junction table
+                dish_ids,
                 created_by,
                 created_at,
                 updated_at,
             },
-            dish_ids,
         })
     }
 
     /// Extracts dish IDs from a meal plan object.
+    /// MealPlan stores dish_ids as a list of UUID strings.
     fn extract_dish_ids(doc: &AutoCommit, obj_id: &ObjId) -> Result<Vec<Uuid>, ProjectionError> {
         let mut dish_ids = Vec::new();
 
         if let Some((value, list_id)) = doc
-            .get(obj_id, "dishes")
+            .get(obj_id, "dish_ids")
             .map_err(|e| ProjectionError::AutomergeError(e.to_string()))?
         {
             if value.is_object() {
@@ -587,7 +587,7 @@ impl MealPlanProjection {
         .await?;
 
         // Insert dish associations
-        for dish_id in &data.dish_ids {
+        for dish_id in &data.mealplan.dish_ids {
             sqlx::query(
                 "INSERT OR IGNORE INTO mealplan_dishes (mealplan_id, dish_id) VALUES (?, ?)",
             )
@@ -601,10 +601,9 @@ impl MealPlanProjection {
     }
 }
 
-/// Internal struct to hold meal plan data with dish IDs.
+/// Internal struct to hold meal plan data.
 struct MealPlanData {
     mealplan: MealPlan,
-    dish_ids: Vec<Uuid>,
 }
 
 /// Projects meal logs from an Automerge document to SQLite.
@@ -707,6 +706,7 @@ impl MealLogProjection {
     }
 
     /// Extracts dish IDs from a meal log object.
+    /// MealLog stores full dish snapshots, so we extract the `id` field from each dish object.
     fn extract_dish_ids(doc: &AutoCommit, obj_id: &ObjId) -> Result<Vec<Uuid>, ProjectionError> {
         let mut dish_ids = Vec::new();
 
@@ -717,13 +717,19 @@ impl MealLogProjection {
             if value.is_object() {
                 let len = doc.length(&list_id);
                 for i in 0..len {
-                    if let Some((item_value, _)) = doc
+                    if let Some((_, dish_obj_id)) = doc
                         .get(&list_id, i)
                         .map_err(|e| ProjectionError::AutomergeError(e.to_string()))?
                     {
-                        if let Ok(id_str) = item_value.into_string() {
-                            if let Ok(id) = Uuid::parse_str(&id_str) {
-                                dish_ids.push(id);
+                        // Get the id field from the dish snapshot object
+                        if let Some((id_value, _)) = doc
+                            .get(&dish_obj_id, "id")
+                            .map_err(|e| ProjectionError::AutomergeError(e.to_string()))?
+                        {
+                            if let Ok(id_str) = id_value.into_string() {
+                                if let Ok(id) = Uuid::parse_str(&id_str) {
+                                    dish_ids.push(id);
+                                }
                             }
                         }
                     }
@@ -1036,9 +1042,9 @@ mod tests {
             .unwrap();
 
         // Add dish IDs
-        let dishes_id = doc.put_object(&plan_id, "dishes", ObjType::List).unwrap();
+        let dish_ids_obj = doc.put_object(&plan_id, "dish_ids", ObjType::List).unwrap();
         for (i, dish_id) in dish_ids.iter().enumerate() {
-            doc.insert(&dishes_id, i, *dish_id).unwrap();
+            doc.insert(&dish_ids_obj, i, *dish_id).unwrap();
         }
     }
 
@@ -1181,10 +1187,22 @@ mod tests {
             doc.put(&log_id, "notes", n).unwrap();
         }
 
-        // Add dish IDs
-        let dishes_id = doc.put_object(&log_id, "dishes", ObjType::List).unwrap();
+        // Add dish snapshots (full dish objects for historical accuracy)
+        let dishes_list = doc.put_object(&log_id, "dishes", ObjType::List).unwrap();
         for (i, dish_id) in dish_ids.iter().enumerate() {
-            doc.insert(&dishes_id, i, *dish_id).unwrap();
+            let dish_obj = doc.insert_object(&dishes_list, i, ObjType::Map).unwrap();
+            doc.put(&dish_obj, "id", *dish_id).unwrap();
+            doc.put(&dish_obj, "name", format!("Dish {}", i + 1))
+                .unwrap();
+            doc.put(&dish_obj, "instructions", "Test instructions")
+                .unwrap();
+            doc.put(&dish_obj, "created_by", "testuser").unwrap();
+            let tags_id = doc.put_object(&dish_obj, "tags", ObjType::List).unwrap();
+            doc.insert(&tags_id, 0, "test").unwrap();
+            let ingredients_id = doc
+                .put_object(&dish_obj, "ingredients", ObjType::List)
+                .unwrap();
+            let _ = ingredients_id; // No ingredients for test
         }
     }
 

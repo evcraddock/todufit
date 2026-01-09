@@ -2,7 +2,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::models::{Dish, Ingredient, MealPlan, MealType, Nutrient};
+use crate::models::{MealPlan, MealType};
 
 pub struct MealPlanRepository {
     pool: SqlitePool,
@@ -21,33 +21,8 @@ struct MealPlanRow {
 }
 
 #[derive(sqlx::FromRow)]
-struct DishRow {
-    id: String,
-    name: String,
-    instructions: String,
-    prep_time: Option<i32>,
-    cook_time: Option<i32>,
-    servings: Option<i32>,
-    tags: String,
-    image_url: Option<String>,
-    source_url: Option<String>,
-    created_by: String,
-    created_at: String,
-    updated_at: String,
-}
-
-#[derive(sqlx::FromRow)]
-struct IngredientRow {
-    name: String,
-    quantity: f64,
-    unit: String,
-}
-
-#[derive(sqlx::FromRow)]
-struct NutrientRow {
-    name: String,
-    amount: f64,
-    unit: String,
+struct DishIdRow {
+    dish_id: String,
 }
 
 impl MealPlanRepository {
@@ -80,9 +55,9 @@ impl MealPlanRepository {
         .execute(&self.pool)
         .await?;
 
-        // Add dishes
-        for dish in &mealplan.dishes {
-            self.add_dish(mealplan.id, dish.id).await?;
+        // Add dish associations
+        for dish_id in &mealplan.dish_ids {
+            self.add_dish(mealplan.id, *dish_id).await?;
         }
 
         self.get_by_id(mealplan.id)
@@ -242,22 +217,17 @@ impl MealPlanRepository {
     }
 
     async fn hydrate_mealplan(&self, row: MealPlanRow) -> Result<MealPlan, sqlx::Error> {
-        // Get associated dishes
-        let dish_rows: Vec<DishRow> = sqlx::query_as(
-            r#"
-            SELECT d.* FROM dishes d
-            INNER JOIN mealplan_dishes md ON d.id = md.dish_id
-            WHERE md.mealplan_id = ?
-            "#,
-        )
-        .bind(&row.id)
-        .fetch_all(&self.pool)
-        .await?;
+        // Get associated dish IDs
+        let dish_id_rows: Vec<DishIdRow> =
+            sqlx::query_as("SELECT dish_id FROM mealplan_dishes WHERE mealplan_id = ?")
+                .bind(&row.id)
+                .fetch_all(&self.pool)
+                .await?;
 
-        let mut dishes = Vec::with_capacity(dish_rows.len());
-        for dish_row in dish_rows {
-            dishes.push(self.hydrate_dish(dish_row).await?);
-        }
+        let dish_ids: Vec<Uuid> = dish_id_rows
+            .into_iter()
+            .filter_map(|r| Uuid::parse_str(&r.dish_id).ok())
+            .collect();
 
         let meal_type: MealType = row.meal_type.parse().unwrap_or(MealType::Dinner);
 
@@ -267,58 +237,7 @@ impl MealPlanRepository {
             meal_type,
             title: row.title,
             cook: row.cook,
-            dishes,
-            created_by: row.created_by,
-            created_at: DateTime::parse_from_rfc3339(&row.created_at)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now()),
-            updated_at: DateTime::parse_from_rfc3339(&row.updated_at)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now()),
-        })
-    }
-
-    async fn hydrate_dish(&self, row: DishRow) -> Result<Dish, sqlx::Error> {
-        let ingredients: Vec<IngredientRow> =
-            sqlx::query_as("SELECT name, quantity, unit FROM ingredients WHERE dish_id = ?")
-                .bind(&row.id)
-                .fetch_all(&self.pool)
-                .await?;
-
-        let nutrients: Vec<NutrientRow> =
-            sqlx::query_as("SELECT name, amount, unit FROM nutrients WHERE dish_id = ?")
-                .bind(&row.id)
-                .fetch_all(&self.pool)
-                .await?;
-
-        let tags: Vec<String> = serde_json::from_str(&row.tags).unwrap_or_default();
-
-        let nutrients = if nutrients.is_empty() {
-            None
-        } else {
-            Some(
-                nutrients
-                    .into_iter()
-                    .map(|n| Nutrient::new(n.name, n.amount, n.unit))
-                    .collect(),
-            )
-        };
-
-        Ok(Dish {
-            id: Uuid::parse_str(&row.id).unwrap(),
-            name: row.name,
-            ingredients: ingredients
-                .into_iter()
-                .map(|i| Ingredient::new(i.name, i.quantity, i.unit))
-                .collect(),
-            instructions: row.instructions,
-            nutrients,
-            prep_time: row.prep_time,
-            cook_time: row.cook_time,
-            servings: row.servings,
-            tags,
-            image_url: row.image_url,
-            source_url: row.source_url,
+            dish_ids,
             created_by: row.created_by,
             created_at: DateTime::parse_from_rfc3339(&row.created_at)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -334,6 +253,7 @@ impl MealPlanRepository {
 mod tests {
     use super::*;
     use crate::db::{init_db, DishRepository};
+    use crate::models::Dish;
     use tempfile::TempDir;
 
     struct TestContext {
@@ -459,10 +379,10 @@ mod tests {
         // Add dish to mealplan
         ctx.mealplan_repo.add_dish(plan.id, dish.id).await.unwrap();
 
-        // Verify dish is associated
+        // Verify dish ID is associated
         let fetched = ctx.mealplan_repo.get_by_id(plan.id).await.unwrap().unwrap();
-        assert_eq!(fetched.dishes.len(), 1);
-        assert_eq!(fetched.dishes[0].name, "Test Dish");
+        assert_eq!(fetched.dish_ids.len(), 1);
+        assert_eq!(fetched.dish_ids[0], dish.id);
 
         // Remove dish
         ctx.mealplan_repo
@@ -472,7 +392,7 @@ mod tests {
 
         // Verify dish is removed
         let fetched = ctx.mealplan_repo.get_by_id(plan.id).await.unwrap().unwrap();
-        assert!(fetched.dishes.is_empty());
+        assert!(fetched.dish_ids.is_empty());
     }
 
     #[tokio::test]

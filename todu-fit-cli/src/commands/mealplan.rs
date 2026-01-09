@@ -167,7 +167,7 @@ impl MealPlanCommand {
                     .with_cook(&cook);
 
                 // Resolve and add dishes
-                let mut resolved_dishes = Vec::new();
+                let mut resolved_dish_ids = Vec::new();
                 for dish_ref in dishes {
                     let dish = if let Ok(uuid) = Uuid::parse_str(dish_ref) {
                         dish_repo.get_by_id(uuid).await?
@@ -176,11 +176,11 @@ impl MealPlanCommand {
                     };
 
                     match dish {
-                        Some(d) => resolved_dishes.push(d),
+                        Some(d) => resolved_dish_ids.push(d.id),
                         None => return Err(format!("Dish not found: {}", dish_ref).into()),
                     }
                 }
-                plan.dishes = resolved_dishes;
+                plan.dish_ids = resolved_dish_ids;
 
                 let created = mealplan_repo.create(&plan).await?;
                 println!("Created meal plan:");
@@ -241,7 +241,7 @@ impl MealPlanCommand {
                                 println!("{}", "-".repeat(10));
                                 current_date = Some(plan.date);
                             }
-                            let dish_count = plan.dishes.len();
+                            let dish_count = plan.dish_ids.len();
                             let dishes_str = if dish_count == 0 {
                                 "no dishes".to_string()
                             } else if dish_count == 1 {
@@ -312,15 +312,17 @@ impl MealPlanCommand {
                             }
                             println!("{}", plan);
 
-                            // Show dish details
-                            if !plan.dishes.is_empty() {
-                                for dish in &plan.dishes {
-                                    println!("\n  {}", dish.name);
-                                    println!("  {}", "-".repeat(dish.name.len()));
-                                    if !dish.ingredients.is_empty() {
-                                        println!("  Ingredients:");
-                                        for ing in &dish.ingredients {
-                                            println!("    - {}", ing);
+                            // Show dish details (load from repository)
+                            if !plan.dish_ids.is_empty() {
+                                for dish_id in &plan.dish_ids {
+                                    if let Some(dish) = dish_repo.get_by_id(*dish_id).await? {
+                                        println!("\n  {}", dish.name);
+                                        println!("  {}", "-".repeat(dish.name.len()));
+                                        if !dish.ingredients.is_empty() {
+                                            println!("  Ingredients:");
+                                            for ing in &dish.ingredients {
+                                                println!("    - {}", ing);
+                                            }
                                         }
                                     }
                                 }

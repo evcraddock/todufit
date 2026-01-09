@@ -3,9 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
-use super::dish::Dish;
 use super::meal_type::MealType;
 
+/// A meal plan represents a planned meal for a specific date.
+///
+/// Meal plans reference dishes by ID (live lookup) rather than embedding
+/// the full dish data. This allows dishes to be updated without changing
+/// the meal plan, and keeps the data model normalized.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MealPlan {
     pub id: Uuid,
@@ -13,7 +17,8 @@ pub struct MealPlan {
     pub meal_type: MealType,
     pub title: String,
     pub cook: String,
-    pub dishes: Vec<Dish>,
+    /// References to dishes by UUID (resolved at display time)
+    pub dish_ids: Vec<Uuid>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -33,7 +38,7 @@ impl MealPlan {
             meal_type,
             title: title.into(),
             cook: "Unknown".to_string(),
-            dishes: Vec::new(),
+            dish_ids: Vec::new(),
             created_by: created_by.into(),
             created_at: now,
             updated_at: now,
@@ -45,9 +50,30 @@ impl MealPlan {
         self
     }
 
-    pub fn with_dishes(mut self, dishes: Vec<Dish>) -> Self {
-        self.dishes = dishes;
+    /// Set the dish IDs for this meal plan.
+    pub fn with_dish_ids(mut self, dish_ids: Vec<Uuid>) -> Self {
+        self.dish_ids = dish_ids;
         self
+    }
+
+    /// Add a dish to this meal plan by ID.
+    pub fn add_dish(&mut self, dish_id: Uuid) {
+        if !self.dish_ids.contains(&dish_id) {
+            self.dish_ids.push(dish_id);
+            self.updated_at = Utc::now();
+        }
+    }
+
+    /// Remove a dish from this meal plan by ID.
+    pub fn remove_dish(&mut self, dish_id: &Uuid) -> bool {
+        let len_before = self.dish_ids.len();
+        self.dish_ids.retain(|id| id != dish_id);
+        if self.dish_ids.len() != len_before {
+            self.updated_at = Utc::now();
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -59,11 +85,8 @@ impl fmt::Display for MealPlan {
         writeln!(f, "Meal: {}", self.meal_type)?;
         writeln!(f, "Cook: {}", self.cook)?;
 
-        if !self.dishes.is_empty() {
-            writeln!(f, "\nDishes:")?;
-            for dish in &self.dishes {
-                writeln!(f, "  - {}", dish.name)?;
-            }
+        if !self.dish_ids.is_empty() {
+            writeln!(f, "\nDishes: {} dish(es)", self.dish_ids.len())?;
         }
 
         Ok(())
@@ -83,7 +106,7 @@ mod tests {
         assert_eq!(plan.meal_type, MealType::Dinner);
         assert_eq!(plan.title, "New Year Dinner");
         assert_eq!(plan.cook, "Unknown");
-        assert!(plan.dishes.is_empty());
+        assert!(plan.dish_ids.is_empty());
     }
 
     #[test]
@@ -92,6 +115,45 @@ mod tests {
         let plan = MealPlan::new(date, MealType::Lunch, "Lunch", "user1").with_cook("Chef Bob");
 
         assert_eq!(plan.cook, "Chef Bob");
+    }
+
+    #[test]
+    fn test_meal_plan_with_dish_ids() {
+        let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+        let dish_id = Uuid::new_v4();
+        let plan =
+            MealPlan::new(date, MealType::Dinner, "Dinner", "user1").with_dish_ids(vec![dish_id]);
+
+        assert_eq!(plan.dish_ids.len(), 1);
+        assert_eq!(plan.dish_ids[0], dish_id);
+    }
+
+    #[test]
+    fn test_meal_plan_add_dish() {
+        let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+        let mut plan = MealPlan::new(date, MealType::Dinner, "Dinner", "user1");
+        let dish_id = Uuid::new_v4();
+
+        plan.add_dish(dish_id);
+        assert_eq!(plan.dish_ids.len(), 1);
+
+        // Adding same dish again should not duplicate
+        plan.add_dish(dish_id);
+        assert_eq!(plan.dish_ids.len(), 1);
+    }
+
+    #[test]
+    fn test_meal_plan_remove_dish() {
+        let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+        let dish_id = Uuid::new_v4();
+        let mut plan =
+            MealPlan::new(date, MealType::Dinner, "Dinner", "user1").with_dish_ids(vec![dish_id]);
+
+        assert!(plan.remove_dish(&dish_id));
+        assert!(plan.dish_ids.is_empty());
+
+        // Removing again should return false
+        assert!(!plan.remove_dish(&dish_id));
     }
 
     #[test]
@@ -108,7 +170,9 @@ mod tests {
     #[test]
     fn test_meal_plan_json_roundtrip() {
         let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
-        let plan = MealPlan::new(date, MealType::Dinner, "Test Dinner", "user1");
+        let dish_id = Uuid::new_v4();
+        let plan = MealPlan::new(date, MealType::Dinner, "Test Dinner", "user1")
+            .with_dish_ids(vec![dish_id]);
 
         let json = serde_json::to_string(&plan).unwrap();
         let parsed: MealPlan = serde_json::from_str(&json).unwrap();
@@ -116,5 +180,6 @@ mod tests {
         assert_eq!(parsed.title, plan.title);
         assert_eq!(parsed.meal_type, plan.meal_type);
         assert_eq!(parsed.date, plan.date);
+        assert_eq!(parsed.dish_ids, plan.dish_ids);
     }
 }

@@ -93,7 +93,7 @@ pub fn delete_dish(doc: &mut AutoCommit, id: Uuid) {
 /// Writes a meal plan to an Automerge document.
 ///
 /// The meal plan is stored at root[mealplan.id.to_string()].
-/// Dishes are stored as a list of UUIDs (references, not embedded).
+/// Dishes are stored as a list of UUIDs (references to be resolved at display time).
 pub fn write_mealplan(doc: &mut AutoCommit, mealplan: &MealPlan) {
     let id_str = mealplan.id.to_string();
 
@@ -126,10 +126,10 @@ pub fn write_mealplan(doc: &mut AutoCommit, mealplan: &MealPlan) {
     )
     .unwrap();
 
-    // Dishes as list of UUIDs
-    let dishes_id = doc.put_object(&plan_id, "dishes", ObjType::List).unwrap();
-    for (i, dish) in mealplan.dishes.iter().enumerate() {
-        doc.insert(&dishes_id, i, dish.id.to_string().as_str())
+    // Dish IDs as list of UUIDs (references, resolved at display time)
+    let dish_ids_obj = doc.put_object(&plan_id, "dish_ids", ObjType::List).unwrap();
+    for (i, dish_id) in mealplan.dish_ids.iter().enumerate() {
+        doc.insert(&dish_ids_obj, i, dish_id.to_string().as_str())
             .unwrap();
     }
 }
@@ -143,7 +143,7 @@ pub fn delete_mealplan(doc: &mut AutoCommit, id: Uuid) {
 /// Writes a meal log to an Automerge document.
 ///
 /// The meal log is stored at root[meallog.id.to_string()].
-/// Dishes are stored as a list of UUIDs (references, not embedded).
+/// Dishes are stored as full snapshots (embedded data, not references) for historical accuracy.
 pub fn write_meallog(doc: &mut AutoCommit, meallog: &MealLog) {
     let id_str = meallog.id.to_string();
 
@@ -173,11 +173,46 @@ pub fn write_meallog(doc: &mut AutoCommit, meallog: &MealLog) {
         doc.put(&log_id, "notes", notes.as_str()).unwrap();
     }
 
-    // Dishes as list of UUIDs
-    let dishes_id = doc.put_object(&log_id, "dishes", ObjType::List).unwrap();
+    // Dish snapshots (full embedded data for historical accuracy)
+    let dishes_list = doc.put_object(&log_id, "dishes", ObjType::List).unwrap();
     for (i, dish) in meallog.dishes.iter().enumerate() {
-        doc.insert(&dishes_id, i, dish.id.to_string().as_str())
+        let dish_obj = doc.insert_object(&dishes_list, i, ObjType::Map).unwrap();
+
+        doc.put(&dish_obj, "id", dish.id.to_string().as_str())
             .unwrap();
+        doc.put(&dish_obj, "name", dish.name.as_str()).unwrap();
+        doc.put(&dish_obj, "instructions", dish.instructions.as_str())
+            .unwrap();
+        doc.put(&dish_obj, "created_by", dish.created_by.as_str())
+            .unwrap();
+
+        // Tags
+        let tags_id = doc.put_object(&dish_obj, "tags", ObjType::List).unwrap();
+        for (j, tag) in dish.tags.iter().enumerate() {
+            doc.insert(&tags_id, j, tag.as_str()).unwrap();
+        }
+
+        // Ingredients
+        let ingredients_id = doc
+            .put_object(&dish_obj, "ingredients", ObjType::List)
+            .unwrap();
+        for (j, ingredient) in dish.ingredients.iter().enumerate() {
+            let ing_id = doc.insert_object(&ingredients_id, j, ObjType::Map).unwrap();
+            doc.put(&ing_id, "name", ingredient.name.as_str()).unwrap();
+            doc.put(&ing_id, "quantity", ingredient.quantity).unwrap();
+            doc.put(&ing_id, "unit", ingredient.unit.as_str()).unwrap();
+        }
+
+        // Optional fields
+        if let Some(prep_time) = dish.prep_time {
+            doc.put(&dish_obj, "prep_time", prep_time as i64).unwrap();
+        }
+        if let Some(cook_time) = dish.cook_time {
+            doc.put(&dish_obj, "cook_time", cook_time as i64).unwrap();
+        }
+        if let Some(servings) = dish.servings {
+            doc.put(&dish_obj, "servings", servings as i64).unwrap();
+        }
     }
 }
 

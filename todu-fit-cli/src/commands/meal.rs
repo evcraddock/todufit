@@ -116,10 +116,18 @@ impl MealCommand {
             .await?
             .ok_or_else(|| format!("Meal plan not found: {}", mealplan_id))?;
 
-        // Create meal log from plan
+        // Load dishes for the plan (snapshots for the log)
+        let mut plan_dishes = Vec::new();
+        for dish_id in &plan.dish_ids {
+            if let Some(dish) = repos.dish.get_by_id(*dish_id).await? {
+                plan_dishes.push(dish);
+            }
+        }
+
+        // Create meal log from plan with dish snapshots
         let mut log = MealLog::new(plan.date, plan.meal_type, &config.created_by.value)
             .with_mealplan_id(plan.id)
-            .with_dishes(plan.dishes.clone());
+            .with_dishes(plan_dishes);
 
         if let Some(n) = notes {
             log = log.with_notes(n);
