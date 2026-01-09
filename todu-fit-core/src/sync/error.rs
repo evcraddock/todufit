@@ -13,8 +13,6 @@ pub enum SyncError {
     ProtocolError(String),
     /// Storage error
     StorageError(String),
-    /// HTTP request error (e.g., /me endpoint)
-    HttpError(String),
     /// Handshake failed
     HandshakeError(String),
     /// Document unavailable on server
@@ -28,15 +26,11 @@ pub enum SyncError {
 impl std::fmt::Display for SyncError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SyncError::NotConfigured => write!(
-                f,
-                "Sync not configured. Add server_url and api_key to config."
-            ),
+            SyncError::NotConfigured => write!(f, "Sync not configured. Add server_url to config."),
             SyncError::ConnectionError(e) => write!(f, "Connection error: {}", e),
             SyncError::WebSocketError(e) => write!(f, "WebSocket error: {}", e),
             SyncError::ProtocolError(e) => write!(f, "Sync protocol error: {}", e),
             SyncError::StorageError(e) => write!(f, "Storage error: {}", e),
-            SyncError::HttpError(e) => write!(f, "HTTP error: {}", e),
             SyncError::HandshakeError(e) => write!(f, "Handshake failed: {}", e),
             SyncError::DocumentUnavailable(doc_id) => {
                 write!(f, "Document unavailable: {}", doc_id)

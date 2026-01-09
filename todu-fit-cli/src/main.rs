@@ -7,8 +7,7 @@ mod models;
 mod sync;
 
 use commands::{
-    meal::MealRepos, AuthCommand, ConfigCommand, DishCommand, MealCommand, MealPlanCommand,
-    SyncCommand,
+    meal::MealRepos, ConfigCommand, DishCommand, MealCommand, MealPlanCommand, SyncCommand,
 };
 use config::Config;
 use sync::{SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
@@ -28,9 +27,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Authenticate with the sync server
-    Auth(AuthCommand),
-
     /// Manage dishes (recipes)
     Dish(DishCommand),
 
@@ -64,9 +60,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load(cli.config)?;
 
     match cli.command {
-        Some(Commands::Auth(cmd)) => {
-            cmd.run(&config)?;
-        }
         Some(Commands::Dish(cmd)) => {
             let repo = SyncDishRepository::new();
             cmd.run(&repo, &config)?;

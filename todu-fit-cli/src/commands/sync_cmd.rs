@@ -36,23 +36,30 @@ impl SyncCommand {
         println!("Syncing with server...");
         println!();
 
-        let results = client.sync_all().await?;
-
         let mut any_updated = false;
-        for result in &results {
-            let status = if result.updated {
-                any_updated = true;
-                "✓ updated"
-            } else {
-                "✓ up to date"
-            };
-            println!(
-                "  {} {} ({} round{})",
-                status,
-                doc_type_name(result.doc_type),
-                result.rounds,
-                if result.rounds == 1 { "" } else { "s" }
-            );
+
+        // Sync each document type
+        for doc_type in [DocType::Dishes, DocType::MealPlans, DocType::MealLogs] {
+            match client.sync_document(doc_type).await {
+                Ok(result) => {
+                    let status = if result.updated {
+                        any_updated = true;
+                        "✓ updated"
+                    } else {
+                        "✓ up to date"
+                    };
+                    println!(
+                        "  {} {} ({} round{})",
+                        status,
+                        doc_type_name(doc_type),
+                        result.rounds,
+                        if result.rounds == 1 { "" } else { "s" }
+                    );
+                }
+                Err(e) => {
+                    println!("  ✗ {} - {}", doc_type_name(doc_type), e);
+                }
+            }
         }
 
         println!();
@@ -77,20 +84,15 @@ impl SyncCommand {
             println!();
             println!("  sync:");
             println!("    server_url: \"ws://localhost:8080\"");
-            println!("    api_key: \"your-api-key\"");
-            println!("    auto_sync: false");
             println!();
-            println!("Or set environment variables:");
+            println!("Or set environment variable:");
             println!("  FIT_SYNC_URL");
-            println!("  FIT_SYNC_API_KEY");
             return Ok(());
         }
 
         let server_url = config.sync.server_url.as_ref().unwrap();
-        let api_key = config.sync.api_key.as_ref().unwrap();
 
         println!("Server:    {}", server_url);
-        println!("API Key:   {}...", &api_key[..api_key.len().min(8)]);
         println!(
             "Auto-sync: {}",
             if config.sync.auto_sync {

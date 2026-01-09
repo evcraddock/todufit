@@ -85,13 +85,6 @@ pub struct PeerMetadata {
     pub is_ephemeral: bool,
 }
 
-/// Response from the /me endpoint.
-#[derive(Debug, Clone, Deserialize)]
-pub struct MeResponse {
-    pub user_id: String,
-    pub group_id: String,
-}
-
 impl ProtocolMessage {
     /// Encode message as CBOR bytes.
     pub fn encode(&self) -> Result<Vec<u8>, ciborium::ser::Error<std::io::Error>> {
@@ -106,21 +99,6 @@ impl ProtocolMessage {
     }
 }
 
-/// Generate a document ID using the same algorithm as todu-sync.
-///
-/// The document ID is computed as: base58(sha256(owner_id + ":" + doc_type)[0:16])
-pub fn generate_doc_id(owner_id: &str, doc_type: &str) -> String {
-    use sha2::{Digest, Sha256};
-
-    let mut hasher = Sha256::new();
-    hasher.update(owner_id.as_bytes());
-    hasher.update(b":");
-    hasher.update(doc_type.as_bytes());
-    let hash = hasher.finalize();
-    // Use bs58check encoding (base58 with checksum) to match automerge-repo
-    bs58::encode(&hash[..16]).with_check().into_string()
-}
-
 /// Generate a random peer ID for this connection.
 pub fn generate_peer_id() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -129,21 +107,6 @@ pub fn generate_peer_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_generate_doc_id() {
-        // Test deterministic generation
-        let id1 = generate_doc_id("group123", "dishes");
-        let id2 = generate_doc_id("group123", "dishes");
-        assert_eq!(id1, id2);
-
-        // Different inputs produce different IDs
-        let id3 = generate_doc_id("group123", "mealplans");
-        assert_ne!(id1, id3);
-
-        let id4 = generate_doc_id("group456", "dishes");
-        assert_ne!(id1, id4);
-    }
 
     #[test]
     fn test_generate_peer_id() {

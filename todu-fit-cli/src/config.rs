@@ -38,17 +38,15 @@ impl<T> ConfigValue<T> {
 pub struct SyncConfig {
     /// Server URL (e.g., "ws://localhost:8080" or "wss://sync.example.com")
     pub server_url: Option<String>,
-    /// API key for authentication
-    pub api_key: Option<String>,
     /// Enable automatic sync after writes (default: false)
     #[serde(default)]
     pub auto_sync: bool,
 }
 
 impl SyncConfig {
-    /// Returns true if sync is configured (has both server_url and api_key)
+    /// Returns true if sync is configured (has server_url)
     pub fn is_configured(&self) -> bool {
-        self.server_url.is_some() && self.api_key.is_some()
+        self.server_url.is_some()
     }
 }
 
@@ -124,9 +122,6 @@ impl Config {
         // Sync env var overrides
         if let Ok(url) = std::env::var("FIT_SYNC_URL") {
             sync.server_url = Some(url);
-        }
-        if let Ok(key) = std::env::var("FIT_SYNC_API_KEY") {
-            sync.api_key = Some(key);
         }
 
         Ok(Self {

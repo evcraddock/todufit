@@ -1,11 +1,9 @@
-mod auth;
 mod config_cmd;
 mod dish;
 pub mod meal;
 mod mealplan;
 mod sync_cmd;
 
-pub use auth::AuthCommand;
 pub use config_cmd::ConfigCommand;
 pub use dish::DishCommand;
 pub use meal::MealCommand;
