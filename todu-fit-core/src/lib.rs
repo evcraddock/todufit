@@ -10,7 +10,7 @@ pub mod sync;
 
 pub use automerge::{
     delete_dish, delete_meallog, delete_mealplan, write_dish, write_meallog, write_mealplan,
-    DocType, DocumentStorage, StorageError,
+    DocType, DocumentStorage, MultiDocStorage, MultiStorageError, StorageError,
 };
 pub use document_id::{DocumentId, DocumentIdError};
 pub use documents::{GroupDocument, GroupRef, IdentityDocument};
