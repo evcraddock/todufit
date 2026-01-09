@@ -51,7 +51,7 @@ impl SyncCommand {
                     println!(
                         "  {} {} ({} round{})",
                         status,
-                        doc_type_name(doc_type),
+                        doc_type_name(result.doc_type),
                         result.rounds,
                         if result.rounds == 1 { "" } else { "s" }
                     );

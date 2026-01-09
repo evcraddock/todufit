@@ -66,10 +66,6 @@ impl From<todu_fit_core::IdentityError> for GroupContextError {
 /// Resolved group context containing document IDs for the current group.
 #[derive(Debug, Clone)]
 pub struct GroupContext {
-    /// Group name
-    pub name: String,
-    /// Group document ID
-    pub group_doc_id: DocumentId,
     /// Dishes document ID
     pub dishes_doc_id: DocumentId,
     /// Meal plans document ID
@@ -79,8 +75,6 @@ pub struct GroupContext {
 /// Resolved user context containing personal document IDs.
 #[derive(Debug, Clone)]
 pub struct UserContext {
-    /// Identity document ID
-    pub identity_doc_id: DocumentId,
     /// Personal meal logs document ID
     pub meallogs_doc_id: DocumentId,
 }
@@ -127,8 +121,6 @@ pub fn resolve_group_context(
         .map_err(|_| GroupContextError::GroupNotSynced(group_ref.name.clone()))?;
 
     Ok(GroupContext {
-        name: group_doc.name.clone(),
-        group_doc_id: group_ref.doc_id,
         dishes_doc_id: group_doc.dishes_doc_id,
         mealplans_doc_id: group_doc.mealplans_doc_id,
     })
@@ -148,11 +140,9 @@ pub fn resolve_user_context() -> Result<UserContext, GroupContextError> {
         IdentityState::Initialized => {}
     }
 
-    let identity_doc_id = identity.root_doc_id()?.unwrap();
     let identity_doc = identity.load_identity()?;
 
     Ok(UserContext {
-        identity_doc_id,
         meallogs_doc_id: identity_doc.meallogs_doc_id,
     })
 }
@@ -162,12 +152,6 @@ pub fn is_identity_ready() -> bool {
     let storage = MultiDocStorage::new(Config::default_data_dir());
     let identity = Identity::new(storage);
     identity.state() == IdentityState::Initialized
-}
-
-/// Get the Identity instance for direct access.
-pub fn get_identity() -> Identity {
-    let storage = MultiDocStorage::new(Config::default_data_dir());
-    Identity::new(storage)
 }
 
 // ==================== Current Group Persistence ====================
