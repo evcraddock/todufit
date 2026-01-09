@@ -5,6 +5,7 @@
 pub mod automerge;
 pub mod document_id;
 pub mod documents;
+pub mod identity;
 pub mod models;
 pub mod sync;
 
@@ -14,6 +15,7 @@ pub use automerge::{
 };
 pub use document_id::{DocumentId, DocumentIdError};
 pub use documents::{GroupDocument, GroupRef, IdentityDocument};
+pub use identity::{Identity, IdentityError, IdentityState};
 pub use models::{Dish, Ingredient, MealLog, MealPlan, MealType, Nutrient};
 pub use sync::{generate_doc_id, SyncClient, SyncError, SyncResult};
 
