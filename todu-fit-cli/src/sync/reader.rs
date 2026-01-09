@@ -1,0 +1,766 @@
+//! Automerge document readers for in-memory queries.
+//!
+//! This module provides functions to read and query data directly from
+//! Automerge documents without SQLite.
+
+use automerge::{AutoCommit, ObjId, ReadDoc, ROOT};
+use chrono::{DateTime, NaiveDate, Utc};
+use uuid::Uuid;
+
+use crate::models::{Dish, Ingredient, MealLog, MealPlan, MealType, Nutrient};
+
+/// Error type for reader operations.
+#[derive(Debug)]
+pub enum ReaderError {
+    /// Automerge operation failed.
+    AutomergeError(String),
+    /// Failed to parse a value.
+    ParseError(String),
+}
+
+impl std::fmt::Display for ReaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReaderError::AutomergeError(e) => write!(f, "Automerge error: {}", e),
+            ReaderError::ParseError(e) => write!(f, "Parse error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for ReaderError {}
+
+// =============================================================================
+// Dish Reader
+// =============================================================================
+
+/// Reads all dishes from an Automerge document.
+pub fn read_all_dishes(doc: &AutoCommit) -> Result<Vec<Dish>, ReaderError> {
+    let mut dishes = Vec::new();
+
+    for key in doc.keys(ROOT) {
+        if let Some((_, obj_id)) = doc
+            .get(ROOT, &key)
+            .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+        {
+            if let Some(dish) = read_dish(doc, &obj_id, &key)? {
+                dishes.push(dish);
+            }
+        }
+    }
+
+    Ok(dishes)
+}
+
+/// Reads a single dish by ID from an Automerge document.
+pub fn read_dish_by_id(doc: &AutoCommit, id: Uuid) -> Result<Option<Dish>, ReaderError> {
+    let key = id.to_string();
+
+    if let Some((_, obj_id)) = doc
+        .get(ROOT, &key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        read_dish(doc, &obj_id, &key)
+    } else {
+        Ok(None)
+    }
+}
+
+#[allow(dead_code)]
+/// Searches dishes by name (case-insensitive partial match).
+pub fn search_dishes_by_name(doc: &AutoCommit, query: &str) -> Result<Vec<Dish>, ReaderError> {
+    let query_lower = query.to_lowercase();
+    let dishes = read_all_dishes(doc)?;
+
+    Ok(dishes
+        .into_iter()
+        .filter(|d| d.name.to_lowercase().contains(&query_lower))
+        .collect())
+}
+
+/// Finds a dish by exact name (case-insensitive).
+pub fn find_dish_by_name(doc: &AutoCommit, name: &str) -> Result<Option<Dish>, ReaderError> {
+    let name_lower = name.to_lowercase();
+    let dishes = read_all_dishes(doc)?;
+
+    Ok(dishes
+        .into_iter()
+        .find(|d| d.name.to_lowercase() == name_lower))
+}
+
+#[allow(dead_code)]
+/// Filters dishes by tag.
+pub fn filter_dishes_by_tag(doc: &AutoCommit, tag: &str) -> Result<Vec<Dish>, ReaderError> {
+    let tag_lower = tag.to_lowercase();
+    let dishes = read_all_dishes(doc)?;
+
+    Ok(dishes
+        .into_iter()
+        .filter(|d| d.tags.iter().any(|t| t.to_lowercase() == tag_lower))
+        .collect())
+}
+
+fn read_dish(doc: &AutoCommit, obj_id: &ObjId, id_str: &str) -> Result<Option<Dish>, ReaderError> {
+    let id = match Uuid::parse_str(id_str) {
+        Ok(id) => id,
+        Err(_) => return Ok(None), // Skip invalid UUIDs
+    };
+
+    let name = match get_string(doc, obj_id, "name")? {
+        Some(n) => n,
+        None => return Ok(None),
+    };
+
+    let instructions = get_string(doc, obj_id, "instructions")?.unwrap_or_default();
+    let created_by = get_string(doc, obj_id, "created_by")?.unwrap_or_default();
+
+    let created_at = get_string(doc, obj_id, "created_at")?
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    let updated_at = get_string(doc, obj_id, "updated_at")?
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    let prep_time = get_i64(doc, obj_id, "prep_time")?.map(|v| v as i32);
+    let cook_time = get_i64(doc, obj_id, "cook_time")?.map(|v| v as i32);
+    let servings = get_i64(doc, obj_id, "servings")?.map(|v| v as i32);
+    let image_url = get_string(doc, obj_id, "image_url")?;
+    let source_url = get_string(doc, obj_id, "source_url")?;
+
+    let tags = read_string_list(doc, obj_id, "tags")?;
+    let ingredients = read_ingredients(doc, obj_id)?;
+    let nutrients = read_nutrients(doc, obj_id)?;
+
+    Ok(Some(Dish {
+        id,
+        name,
+        ingredients,
+        instructions,
+        nutrients,
+        prep_time,
+        cook_time,
+        servings,
+        tags,
+        image_url,
+        source_url,
+        created_by,
+        created_at,
+        updated_at,
+    }))
+}
+
+fn read_ingredients(doc: &AutoCommit, obj_id: &ObjId) -> Result<Vec<Ingredient>, ReaderError> {
+    let mut ingredients = Vec::new();
+
+    if let Some((_, list_id)) = doc
+        .get(obj_id, "ingredients")
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        let len = doc.length(&list_id);
+        for i in 0..len {
+            if let Some((_, ing_id)) = doc
+                .get(&list_id, i)
+                .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+            {
+                let name = get_string(doc, &ing_id, "name")?.unwrap_or_default();
+                let quantity = get_f64(doc, &ing_id, "quantity")?.unwrap_or(0.0);
+                let unit = get_string(doc, &ing_id, "unit")?.unwrap_or_default();
+
+                ingredients.push(Ingredient::new(name, quantity, unit));
+            }
+        }
+    }
+
+    Ok(ingredients)
+}
+
+fn read_nutrients(doc: &AutoCommit, obj_id: &ObjId) -> Result<Option<Vec<Nutrient>>, ReaderError> {
+    if let Some((_, list_id)) = doc
+        .get(obj_id, "nutrients")
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        let mut nutrients = Vec::new();
+        let len = doc.length(&list_id);
+
+        for i in 0..len {
+            if let Some((_, nut_id)) = doc
+                .get(&list_id, i)
+                .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+            {
+                let name = get_string(doc, &nut_id, "name")?.unwrap_or_default();
+                let amount = get_f64(doc, &nut_id, "amount")?.unwrap_or(0.0);
+                let unit = get_string(doc, &nut_id, "unit")?.unwrap_or_default();
+
+                nutrients.push(Nutrient::new(name, amount, unit));
+            }
+        }
+
+        if nutrients.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(nutrients))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+// =============================================================================
+// MealPlan Reader
+// =============================================================================
+
+/// Reads all meal plans from an Automerge document.
+pub fn read_all_mealplans(doc: &AutoCommit) -> Result<Vec<MealPlan>, ReaderError> {
+    let mut plans = Vec::new();
+
+    for key in doc.keys(ROOT) {
+        if let Some((_, obj_id)) = doc
+            .get(ROOT, &key)
+            .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+        {
+            if let Some(plan) = read_mealplan(doc, &obj_id, &key)? {
+                plans.push(plan);
+            }
+        }
+    }
+
+    Ok(plans)
+}
+
+/// Reads a single meal plan by ID.
+pub fn read_mealplan_by_id(doc: &AutoCommit, id: Uuid) -> Result<Option<MealPlan>, ReaderError> {
+    let key = id.to_string();
+
+    if let Some((_, obj_id)) = doc
+        .get(ROOT, &key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        read_mealplan(doc, &obj_id, &key)
+    } else {
+        Ok(None)
+    }
+}
+
+/// Lists meal plans within a date range.
+pub fn list_mealplans_by_date_range(
+    doc: &AutoCommit,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<MealPlan>, ReaderError> {
+    let plans = read_all_mealplans(doc)?;
+
+    Ok(plans
+        .into_iter()
+        .filter(|p| p.date >= from && p.date <= to)
+        .collect())
+}
+
+/// Gets meal plans for a specific date.
+pub fn get_mealplans_by_date(
+    doc: &AutoCommit,
+    date: NaiveDate,
+) -> Result<Vec<MealPlan>, ReaderError> {
+    let plans = read_all_mealplans(doc)?;
+
+    Ok(plans.into_iter().filter(|p| p.date == date).collect())
+}
+
+/// Gets a meal plan by date and type.
+pub fn get_mealplan_by_date_and_type(
+    doc: &AutoCommit,
+    date: NaiveDate,
+    meal_type: MealType,
+) -> Result<Option<MealPlan>, ReaderError> {
+    let plans = read_all_mealplans(doc)?;
+
+    Ok(plans
+        .into_iter()
+        .find(|p| p.date == date && p.meal_type == meal_type))
+}
+
+fn read_mealplan(
+    doc: &AutoCommit,
+    obj_id: &ObjId,
+    id_str: &str,
+) -> Result<Option<MealPlan>, ReaderError> {
+    let id = match Uuid::parse_str(id_str) {
+        Ok(id) => id,
+        Err(_) => return Ok(None),
+    };
+
+    let date_str = match get_string(doc, obj_id, "date")? {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+
+    let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| ReaderError::ParseError(format!("Invalid date '{}': {}", date_str, e)))?;
+
+    let meal_type_str = get_string(doc, obj_id, "meal_type")?.unwrap_or_default();
+    let meal_type: MealType = meal_type_str.parse().unwrap_or(MealType::Dinner);
+
+    let title = get_string(doc, obj_id, "title")?.unwrap_or_default();
+    let cook = get_string(doc, obj_id, "cook")?.unwrap_or_default();
+    let created_by = get_string(doc, obj_id, "created_by")?.unwrap_or_default();
+
+    let created_at = get_string(doc, obj_id, "created_at")?
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    let updated_at = get_string(doc, obj_id, "updated_at")?
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    let dish_ids = read_dish_ids(doc, obj_id, "dish_ids")?;
+
+    Ok(Some(MealPlan {
+        id,
+        date,
+        meal_type,
+        title,
+        cook,
+        dish_ids,
+        created_by,
+        created_at,
+        updated_at,
+    }))
+}
+
+// =============================================================================
+// MealLog Reader
+// =============================================================================
+
+/// Reads all meal logs from an Automerge document.
+pub fn read_all_meallogs(doc: &AutoCommit) -> Result<Vec<MealLog>, ReaderError> {
+    let mut logs = Vec::new();
+
+    for key in doc.keys(ROOT) {
+        if let Some((_, obj_id)) = doc
+            .get(ROOT, &key)
+            .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+        {
+            if let Some(log) = read_meallog(doc, &obj_id, &key)? {
+                logs.push(log);
+            }
+        }
+    }
+
+    Ok(logs)
+}
+
+/// Reads a single meal log by ID.
+pub fn read_meallog_by_id(doc: &AutoCommit, id: Uuid) -> Result<Option<MealLog>, ReaderError> {
+    let key = id.to_string();
+
+    if let Some((_, obj_id)) = doc
+        .get(ROOT, &key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        read_meallog(doc, &obj_id, &key)
+    } else {
+        Ok(None)
+    }
+}
+
+/// Lists meal logs within a date range.
+pub fn list_meallogs_by_date_range(
+    doc: &AutoCommit,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<MealLog>, ReaderError> {
+    let logs = read_all_meallogs(doc)?;
+
+    Ok(logs
+        .into_iter()
+        .filter(|l| l.date >= from && l.date <= to)
+        .collect())
+}
+
+fn read_meallog(
+    doc: &AutoCommit,
+    obj_id: &ObjId,
+    id_str: &str,
+) -> Result<Option<MealLog>, ReaderError> {
+    let id = match Uuid::parse_str(id_str) {
+        Ok(id) => id,
+        Err(_) => return Ok(None),
+    };
+
+    let date_str = match get_string(doc, obj_id, "date")? {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+
+    let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| ReaderError::ParseError(format!("Invalid date '{}': {}", date_str, e)))?;
+
+    let meal_type_str = get_string(doc, obj_id, "meal_type")?.unwrap_or_default();
+    let meal_type: MealType = meal_type_str.parse().unwrap_or(MealType::Dinner);
+
+    let mealplan_id =
+        get_string(doc, obj_id, "mealplan_id")?.and_then(|s| Uuid::parse_str(&s).ok());
+
+    let notes = get_string(doc, obj_id, "notes")?;
+    let created_by = get_string(doc, obj_id, "created_by")?.unwrap_or_default();
+
+    let created_at = get_string(doc, obj_id, "created_at")?
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    // Read dish snapshots
+    let dishes = read_dish_snapshots(doc, obj_id)?;
+
+    Ok(Some(MealLog {
+        id,
+        date,
+        meal_type,
+        mealplan_id,
+        dishes,
+        notes,
+        created_by,
+        created_at,
+    }))
+}
+
+fn read_dish_snapshots(doc: &AutoCommit, obj_id: &ObjId) -> Result<Vec<Dish>, ReaderError> {
+    let mut dishes = Vec::new();
+
+    if let Some((_, list_id)) = doc
+        .get(obj_id, "dishes")
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        let len = doc.length(&list_id);
+        for i in 0..len {
+            if let Some((_, dish_id)) = doc
+                .get(&list_id, i)
+                .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+            {
+                // Read dish snapshot from embedded object
+                let id_str = get_string(doc, &dish_id, "id")?.unwrap_or_default();
+                let id = Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4());
+
+                let name = get_string(doc, &dish_id, "name")?.unwrap_or_default();
+                let instructions = get_string(doc, &dish_id, "instructions")?.unwrap_or_default();
+                let created_by = get_string(doc, &dish_id, "created_by")?.unwrap_or_default();
+
+                let tags = read_string_list(doc, &dish_id, "tags")?;
+                let ingredients = read_ingredients(doc, &dish_id)?;
+
+                let prep_time = get_i64(doc, &dish_id, "prep_time")?.map(|v| v as i32);
+                let cook_time = get_i64(doc, &dish_id, "cook_time")?.map(|v| v as i32);
+                let servings = get_i64(doc, &dish_id, "servings")?.map(|v| v as i32);
+
+                dishes.push(Dish {
+                    id,
+                    name,
+                    ingredients,
+                    instructions,
+                    nutrients: None,
+                    prep_time,
+                    cook_time,
+                    servings,
+                    tags,
+                    image_url: None,
+                    source_url: None,
+                    created_by,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                });
+            }
+        }
+    }
+
+    Ok(dishes)
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+fn get_string(doc: &AutoCommit, obj_id: &ObjId, key: &str) -> Result<Option<String>, ReaderError> {
+    if let Some((value, _)) = doc
+        .get(obj_id, key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        Ok(value.into_string().ok())
+    } else {
+        Ok(None)
+    }
+}
+
+fn get_i64(doc: &AutoCommit, obj_id: &ObjId, key: &str) -> Result<Option<i64>, ReaderError> {
+    if let Some((value, _)) = doc
+        .get(obj_id, key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        Ok(value.to_i64())
+    } else {
+        Ok(None)
+    }
+}
+
+fn get_f64(doc: &AutoCommit, obj_id: &ObjId, key: &str) -> Result<Option<f64>, ReaderError> {
+    if let Some((value, _)) = doc
+        .get(obj_id, key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        Ok(value.to_f64())
+    } else {
+        Ok(None)
+    }
+}
+
+fn read_string_list(
+    doc: &AutoCommit,
+    obj_id: &ObjId,
+    key: &str,
+) -> Result<Vec<String>, ReaderError> {
+    let mut result = Vec::new();
+
+    if let Some((_, list_id)) = doc
+        .get(obj_id, key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        let len = doc.length(&list_id);
+        for i in 0..len {
+            if let Some((value, _)) = doc
+                .get(&list_id, i)
+                .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+            {
+                if let Ok(s) = value.into_string() {
+                    result.push(s);
+                }
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+fn read_dish_ids(doc: &AutoCommit, obj_id: &ObjId, key: &str) -> Result<Vec<Uuid>, ReaderError> {
+    let mut result = Vec::new();
+
+    if let Some((_, list_id)) = doc
+        .get(obj_id, key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        let len = doc.length(&list_id);
+        for i in 0..len {
+            if let Some((value, _)) = doc
+                .get(&list_id, i)
+                .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+            {
+                if let Ok(s) = value.into_string() {
+                    if let Ok(id) = Uuid::parse_str(&s) {
+                        result.push(id);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use automerge::{transaction::Transactable, ObjType};
+
+    fn create_test_dish_doc() -> AutoCommit {
+        let mut doc = AutoCommit::new();
+        let dish_id = "550e8400-e29b-41d4-a716-446655440001";
+
+        let dish_obj = doc.put_object(ROOT, dish_id, ObjType::Map).unwrap();
+        doc.put(&dish_obj, "name", "Test Pasta").unwrap();
+        doc.put(&dish_obj, "instructions", "Cook pasta").unwrap();
+        doc.put(&dish_obj, "created_by", "testuser").unwrap();
+        doc.put(&dish_obj, "created_at", "2025-01-01T00:00:00Z")
+            .unwrap();
+        doc.put(&dish_obj, "updated_at", "2025-01-01T00:00:00Z")
+            .unwrap();
+
+        let tags = doc.put_object(&dish_obj, "tags", ObjType::List).unwrap();
+        doc.insert(&tags, 0, "italian").unwrap();
+        doc.insert(&tags, 1, "pasta").unwrap();
+
+        let ingredients = doc
+            .put_object(&dish_obj, "ingredients", ObjType::List)
+            .unwrap();
+        let ing = doc.insert_object(&ingredients, 0, ObjType::Map).unwrap();
+        doc.put(&ing, "name", "pasta").unwrap();
+        doc.put(&ing, "quantity", 200.0).unwrap();
+        doc.put(&ing, "unit", "g").unwrap();
+
+        doc
+    }
+
+    #[test]
+    fn test_read_all_dishes() {
+        let doc = create_test_dish_doc();
+        let dishes = read_all_dishes(&doc).unwrap();
+
+        assert_eq!(dishes.len(), 1);
+        assert_eq!(dishes[0].name, "Test Pasta");
+    }
+
+    #[test]
+    fn test_read_dish_by_id() {
+        let doc = create_test_dish_doc();
+        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
+
+        let dish = read_dish_by_id(&doc, id).unwrap();
+        assert!(dish.is_some());
+        assert_eq!(dish.unwrap().name, "Test Pasta");
+    }
+
+    #[test]
+    fn test_read_dish_by_id_not_found() {
+        let doc = create_test_dish_doc();
+        let id = Uuid::new_v4();
+
+        let dish = read_dish_by_id(&doc, id).unwrap();
+        assert!(dish.is_none());
+    }
+
+    #[test]
+    fn test_search_dishes_by_name() {
+        let doc = create_test_dish_doc();
+        let dishes = search_dishes_by_name(&doc, "pasta").unwrap();
+
+        assert_eq!(dishes.len(), 1);
+        assert_eq!(dishes[0].name, "Test Pasta");
+    }
+
+    #[test]
+    fn test_filter_dishes_by_tag() {
+        let doc = create_test_dish_doc();
+        let dishes = filter_dishes_by_tag(&doc, "italian").unwrap();
+
+        assert_eq!(dishes.len(), 1);
+        assert_eq!(dishes[0].name, "Test Pasta");
+    }
+
+    #[test]
+    fn test_read_ingredients() {
+        let doc = create_test_dish_doc();
+        let dishes = read_all_dishes(&doc).unwrap();
+
+        assert_eq!(dishes[0].ingredients.len(), 1);
+        assert_eq!(dishes[0].ingredients[0].name, "pasta");
+        assert_eq!(dishes[0].ingredients[0].quantity, 200.0);
+        assert_eq!(dishes[0].ingredients[0].unit, "g");
+    }
+
+    fn create_test_mealplan_doc() -> AutoCommit {
+        let mut doc = AutoCommit::new();
+        let plan_id = "550e8400-e29b-41d4-a716-446655440002";
+
+        let plan_obj = doc.put_object(ROOT, plan_id, ObjType::Map).unwrap();
+        doc.put(&plan_obj, "date", "2025-01-15").unwrap();
+        doc.put(&plan_obj, "meal_type", "dinner").unwrap();
+        doc.put(&plan_obj, "title", "Test Dinner").unwrap();
+        doc.put(&plan_obj, "cook", "Chef").unwrap();
+        doc.put(&plan_obj, "created_by", "testuser").unwrap();
+        doc.put(&plan_obj, "created_at", "2025-01-01T00:00:00Z")
+            .unwrap();
+        doc.put(&plan_obj, "updated_at", "2025-01-01T00:00:00Z")
+            .unwrap();
+
+        let dish_ids = doc
+            .put_object(&plan_obj, "dish_ids", ObjType::List)
+            .unwrap();
+        doc.insert(&dish_ids, 0, "550e8400-e29b-41d4-a716-446655440001")
+            .unwrap();
+
+        doc
+    }
+
+    #[test]
+    fn test_read_all_mealplans() {
+        let doc = create_test_mealplan_doc();
+        let plans = read_all_mealplans(&doc).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].title, "Test Dinner");
+    }
+
+    #[test]
+    fn test_list_mealplans_by_date_range() {
+        let doc = create_test_mealplan_doc();
+        let from = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+        let to = NaiveDate::from_ymd_opt(2025, 1, 31).unwrap();
+
+        let plans = list_mealplans_by_date_range(&doc, from, to).unwrap();
+        assert_eq!(plans.len(), 1);
+    }
+
+    #[test]
+    fn test_get_mealplan_by_date_and_type() {
+        let doc = create_test_mealplan_doc();
+        let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+
+        let plan = get_mealplan_by_date_and_type(&doc, date, MealType::Dinner).unwrap();
+        assert!(plan.is_some());
+        assert_eq!(plan.unwrap().title, "Test Dinner");
+    }
+
+    fn create_test_meallog_doc() -> AutoCommit {
+        let mut doc = AutoCommit::new();
+        let log_id = "550e8400-e29b-41d4-a716-446655440003";
+
+        let log_obj = doc.put_object(ROOT, log_id, ObjType::Map).unwrap();
+        doc.put(&log_obj, "date", "2025-01-15").unwrap();
+        doc.put(&log_obj, "meal_type", "lunch").unwrap();
+        doc.put(&log_obj, "notes", "Delicious!").unwrap();
+        doc.put(&log_obj, "created_by", "testuser").unwrap();
+        doc.put(&log_obj, "created_at", "2025-01-01T00:00:00Z")
+            .unwrap();
+
+        // Add dish snapshot
+        let dishes = doc.put_object(&log_obj, "dishes", ObjType::List).unwrap();
+        let dish = doc.insert_object(&dishes, 0, ObjType::Map).unwrap();
+        doc.put(&dish, "id", "550e8400-e29b-41d4-a716-446655440001")
+            .unwrap();
+        doc.put(&dish, "name", "Snapshot Pasta").unwrap();
+        doc.put(&dish, "instructions", "Cook it").unwrap();
+        doc.put(&dish, "created_by", "testuser").unwrap();
+        let _ = doc.put_object(&dish, "tags", ObjType::List).unwrap();
+        let _ = doc.put_object(&dish, "ingredients", ObjType::List).unwrap();
+
+        doc
+    }
+
+    #[test]
+    fn test_read_all_meallogs() {
+        let doc = create_test_meallog_doc();
+        let logs = read_all_meallogs(&doc).unwrap();
+
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].notes, Some("Delicious!".to_string()));
+    }
+
+    #[test]
+    fn test_read_meallog_with_dish_snapshots() {
+        let doc = create_test_meallog_doc();
+        let logs = read_all_meallogs(&doc).unwrap();
+
+        assert_eq!(logs[0].dishes.len(), 1);
+        assert_eq!(logs[0].dishes[0].name, "Snapshot Pasta");
+    }
+
+    #[test]
+    fn test_list_meallogs_by_date_range() {
+        let doc = create_test_meallog_doc();
+        let from = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+        let to = NaiveDate::from_ymd_opt(2025, 1, 31).unwrap();
+
+        let logs = list_meallogs_by_date_range(&doc, from, to).unwrap();
+        assert_eq!(logs.len(), 1);
+    }
+}

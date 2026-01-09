@@ -4,9 +4,8 @@ use std::io::{self, Write};
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::db::DishRepository;
 use crate::models::{MealPlan, MealType};
-use crate::sync::SyncMealPlanRepository;
+use crate::sync::{SyncDishRepository, SyncMealPlanRepository};
 
 #[derive(Clone, ValueEnum, Default)]
 pub enum OutputFormat {
@@ -131,10 +130,10 @@ pub enum MealPlanSubcommand {
 }
 
 impl MealPlanCommand {
-    pub async fn run(
+    pub fn run(
         &self,
         mealplan_repo: &SyncMealPlanRepository,
-        dish_repo: &DishRepository,
+        dish_repo: &SyncDishRepository,
         config: &Config,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match &self.command {
@@ -170,9 +169,9 @@ impl MealPlanCommand {
                 let mut resolved_dish_ids = Vec::new();
                 for dish_ref in dishes {
                     let dish = if let Ok(uuid) = Uuid::parse_str(dish_ref) {
-                        dish_repo.get_by_id(uuid).await?
+                        dish_repo.get_by_id(uuid)?
                     } else {
-                        dish_repo.get_by_name(dish_ref).await?
+                        dish_repo.get_by_name(dish_ref)?
                     };
 
                     match dish {
@@ -182,7 +181,7 @@ impl MealPlanCommand {
                 }
                 plan.dish_ids = resolved_dish_ids;
 
-                let created = mealplan_repo.create(&plan).await?;
+                let created = mealplan_repo.create(&plan)?;
                 println!("Created meal plan:");
                 println!("{}", created);
                 Ok(())
@@ -214,7 +213,7 @@ impl MealPlanCommand {
                 };
 
                 // Fetch meal plans
-                let mut plans = mealplan_repo.list_range(from_date, to_date).await?;
+                let mut plans = mealplan_repo.list_range(from_date, to_date)?;
 
                 // Apply meal type filter
                 if let Some(mt) = meal_type_filter {
@@ -264,17 +263,14 @@ impl MealPlanCommand {
             } => {
                 // Try to parse as UUID first
                 let plans: Vec<MealPlan> = if let Ok(uuid) = Uuid::parse_str(identifier) {
-                    match mealplan_repo.get_by_id(uuid).await? {
+                    match mealplan_repo.get_by_id(uuid)? {
                         Some(plan) => vec![plan],
                         None => vec![],
                     }
                 } else if let Ok(date) = NaiveDate::parse_from_str(identifier, "%Y-%m-%d") {
                     if let Some(mt) = meal_type {
                         let meal_type_filter: MealType = mt.parse().map_err(|e: String| e)?;
-                        match mealplan_repo
-                            .get_by_date_and_type(date, meal_type_filter)
-                            .await?
-                        {
+                        match mealplan_repo.get_by_date_and_type(date, meal_type_filter)? {
                             Some(plan) => vec![plan],
                             None => {
                                 return Err(
@@ -283,7 +279,7 @@ impl MealPlanCommand {
                             }
                         }
                     } else {
-                        mealplan_repo.get_by_date(date).await?
+                        mealplan_repo.get_by_date(date)?
                     }
                 } else {
                     return Err(format!(
@@ -315,7 +311,7 @@ impl MealPlanCommand {
                             // Show dish details (load from repository)
                             if !plan.dish_ids.is_empty() {
                                 for dish_id in &plan.dish_ids {
-                                    if let Some(dish) = dish_repo.get_by_id(*dish_id).await? {
+                                    if let Some(dish) = dish_repo.get_by_id(*dish_id)? {
                                         println!("\n  {}", dish.name);
                                         println!("  {}", "-".repeat(dish.name.len()));
                                         if !dish.ingredients.is_empty() {
@@ -353,8 +349,7 @@ impl MealPlanCommand {
 
                 // Get existing plan
                 let mut plan = mealplan_repo
-                    .get_by_id(uuid)
-                    .await?
+                    .get_by_id(uuid)?
                     .ok_or_else(|| format!("Meal plan not found: {}", id))?;
 
                 // Apply updates
@@ -372,7 +367,7 @@ impl MealPlanCommand {
                     plan.cook = c.clone();
                 }
 
-                let updated = mealplan_repo.update(&plan).await?;
+                let updated = mealplan_repo.update(&plan)?;
                 println!("Updated meal plan:");
                 println!("{}", updated);
                 Ok(())
@@ -384,8 +379,7 @@ impl MealPlanCommand {
 
                 // Get existing plan
                 let plan = mealplan_repo
-                    .get_by_id(uuid)
-                    .await?
+                    .get_by_id(uuid)?
                     .ok_or_else(|| format!("Meal plan not found: {}", id))?;
 
                 // Confirm unless --force
@@ -405,7 +399,7 @@ impl MealPlanCommand {
                     }
                 }
 
-                mealplan_repo.delete(uuid).await?;
+                mealplan_repo.delete(uuid)?;
                 println!("Deleted meal plan: {}", plan.title);
                 Ok(())
             }
@@ -417,21 +411,20 @@ impl MealPlanCommand {
 
                 // Get plan (for title in success message)
                 let plan = mealplan_repo
-                    .get_by_id(plan_uuid)
-                    .await?
+                    .get_by_id(plan_uuid)?
                     .ok_or_else(|| format!("Meal plan not found: {}", plan_id))?;
 
                 // Resolve dish
                 let resolved_dish = if let Ok(uuid) = Uuid::parse_str(dish) {
-                    dish_repo.get_by_id(uuid).await?
+                    dish_repo.get_by_id(uuid)?
                 } else {
-                    dish_repo.get_by_name(dish).await?
+                    dish_repo.get_by_name(dish)?
                 };
 
                 let resolved_dish =
                     resolved_dish.ok_or_else(|| format!("Dish not found: {}", dish))?;
 
-                mealplan_repo.add_dish(plan_uuid, resolved_dish.id).await?;
+                mealplan_repo.add_dish(plan_uuid, resolved_dish.id)?;
                 println!("Added '{}' to '{}'", resolved_dish.name, plan.title);
                 Ok(())
             }
@@ -443,23 +436,20 @@ impl MealPlanCommand {
 
                 // Get plan (for title in success message)
                 let plan = mealplan_repo
-                    .get_by_id(plan_uuid)
-                    .await?
+                    .get_by_id(plan_uuid)?
                     .ok_or_else(|| format!("Meal plan not found: {}", plan_id))?;
 
                 // Resolve dish
                 let resolved_dish = if let Ok(uuid) = Uuid::parse_str(dish) {
-                    dish_repo.get_by_id(uuid).await?
+                    dish_repo.get_by_id(uuid)?
                 } else {
-                    dish_repo.get_by_name(dish).await?
+                    dish_repo.get_by_name(dish)?
                 };
 
                 let resolved_dish =
                     resolved_dish.ok_or_else(|| format!("Dish not found: {}", dish))?;
 
-                mealplan_repo
-                    .remove_dish(plan_uuid, resolved_dish.id)
-                    .await?;
+                mealplan_repo.remove_dish(plan_uuid, resolved_dish.id)?;
                 println!("Removed '{}' from '{}'", resolved_dish.name, plan.title);
                 Ok(())
             }

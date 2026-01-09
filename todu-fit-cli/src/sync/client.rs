@@ -1,14 +1,13 @@
 //! WebSocket sync client for connecting to the ToduFit sync server.
 //!
 //! This module wraps the core sync client and adds CLI-specific functionality
-//! like storage management and SQLite projection.
+//! like storage management.
 
 use std::collections::HashMap;
 
 use automerge::AutoCommit;
 
 use super::storage::{DocType, DocumentStorage};
-use super::{DishProjection, MealLogProjection, MealPlanProjection};
 use crate::config::SyncConfig;
 
 // Re-export core types
@@ -25,8 +24,6 @@ pub enum SyncClientError {
     SyncError(CoreSyncError),
     /// Storage error
     StorageError(String),
-    /// Projection error
-    ProjectionError(String),
 }
 
 impl std::fmt::Display for SyncClientError {
@@ -38,7 +35,6 @@ impl std::fmt::Display for SyncClientError {
             ),
             SyncClientError::SyncError(e) => write!(f, "{}", e),
             SyncClientError::StorageError(e) => write!(f, "Storage error: {}", e),
-            SyncClientError::ProjectionError(e) => write!(f, "Projection error: {}", e),
         }
     }
 }
@@ -51,7 +47,7 @@ impl From<CoreSyncError> for SyncClientError {
     }
 }
 
-/// Sync client for the CLI that manages storage and projection.
+/// Sync client for the CLI that manages storage.
 #[derive(Debug)]
 pub struct SyncClient {
     core: CoreSyncClient,
@@ -140,56 +136,6 @@ impl SyncClient {
             .map_err(|e| SyncClientError::StorageError(e.to_string()))?;
 
         Ok(result)
-    }
-
-    /// Syncs all documents and projects changes to SQLite.
-    pub async fn sync_and_project(
-        &mut self,
-        pool: &sqlx::SqlitePool,
-    ) -> Result<Vec<SyncResult>, SyncClientError> {
-        let results = self.sync_all().await?;
-
-        // Project updated documents to SQLite
-        for result in &results {
-            if result.updated {
-                self.project_document(result.doc_type, pool).await?;
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Projects a document to SQLite.
-    async fn project_document(
-        &self,
-        doc_type: DocType,
-        pool: &sqlx::SqlitePool,
-    ) -> Result<(), SyncClientError> {
-        let doc = self
-            .storage
-            .load(doc_type)
-            .map_err(|e| SyncClientError::StorageError(e.to_string()))?
-            .ok_or_else(|| SyncClientError::StorageError("Document not found".to_string()))?;
-
-        match doc_type {
-            DocType::Dishes => {
-                DishProjection::project_all(&doc, pool)
-                    .await
-                    .map_err(|e| SyncClientError::ProjectionError(e.to_string()))?;
-            }
-            DocType::MealPlans => {
-                MealPlanProjection::project_all(&doc, pool)
-                    .await
-                    .map_err(|e| SyncClientError::ProjectionError(e.to_string()))?;
-            }
-            DocType::MealLogs => {
-                MealLogProjection::project_all(&doc, pool)
-                    .await
-                    .map_err(|e| SyncClientError::ProjectionError(e.to_string()))?;
-            }
-        }
-
-        Ok(())
     }
 }
 

@@ -4,9 +4,8 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::db::DishRepository;
 use crate::models::{MealLog, MealType};
-use crate::sync::{SyncMealLogRepository, SyncMealPlanRepository};
+use crate::sync::{SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
 
 #[derive(Clone, ValueEnum, Default)]
 pub enum OutputFormat {
@@ -19,7 +18,7 @@ pub enum OutputFormat {
 pub struct MealRepos<'a> {
     pub meallog: &'a SyncMealLogRepository,
     pub mealplan: &'a SyncMealPlanRepository,
-    pub dish: &'a DishRepository,
+    pub dish: &'a SyncDishRepository,
 }
 
 #[derive(Args)]
@@ -69,7 +68,7 @@ pub enum MealSubcommand {
 }
 
 impl MealCommand {
-    pub async fn run(
+    pub fn run(
         &self,
         repos: MealRepos<'_>,
         config: &Config,
@@ -85,20 +84,19 @@ impl MealCommand {
                 // Determine if this is a planned or unplanned meal
                 if let Some(plan_id) = mealplan_id {
                     // Logging from a plan
-                    self.log_from_plan(plan_id, notes, &repos, config).await
+                    self.log_from_plan(plan_id, notes, &repos, config)
                 } else {
                     // Unplanned meal - require date and type
                     self.log_unplanned(date, meal_type, dishes, notes, &repos, config)
-                        .await
                 }
             }
             MealSubcommand::History { format, from, to } => {
-                self.show_history(format, from, to, &repos).await
+                self.show_history(format, from, to, &repos)
             }
         }
     }
 
-    async fn log_from_plan(
+    fn log_from_plan(
         &self,
         mealplan_id: &str,
         notes: &Option<String>,
@@ -112,14 +110,13 @@ impl MealCommand {
         // Get the meal plan
         let plan = repos
             .mealplan
-            .get_by_id(plan_uuid)
-            .await?
+            .get_by_id(plan_uuid)?
             .ok_or_else(|| format!("Meal plan not found: {}", mealplan_id))?;
 
         // Load dishes for the plan (snapshots for the log)
         let mut plan_dishes = Vec::new();
         for dish_id in &plan.dish_ids {
-            if let Some(dish) = repos.dish.get_by_id(*dish_id).await? {
+            if let Some(dish) = repos.dish.get_by_id(*dish_id)? {
                 plan_dishes.push(dish);
             }
         }
@@ -133,7 +130,7 @@ impl MealCommand {
             log = log.with_notes(n);
         }
 
-        let created = repos.meallog.create(&log).await?;
+        let created = repos.meallog.create(&log)?;
 
         println!("Logged meal from plan '{}':", plan.title);
         println!();
@@ -142,7 +139,7 @@ impl MealCommand {
         Ok(())
     }
 
-    async fn log_unplanned(
+    fn log_unplanned(
         &self,
         date: &Option<String>,
         meal_type: &Option<String>,
@@ -170,9 +167,9 @@ impl MealCommand {
         let mut resolved_dishes = Vec::new();
         for dish_ref in dishes {
             let dish = if let Ok(uuid) = Uuid::parse_str(dish_ref) {
-                repos.dish.get_by_id(uuid).await?
+                repos.dish.get_by_id(uuid)?
             } else {
-                repos.dish.get_by_name(dish_ref).await?
+                repos.dish.get_by_name(dish_ref)?
             };
 
             match dish {
@@ -189,7 +186,7 @@ impl MealCommand {
             log = log.with_notes(n);
         }
 
-        let created = repos.meallog.create(&log).await?;
+        let created = repos.meallog.create(&log)?;
 
         println!("Logged unplanned meal:");
         println!();
@@ -198,7 +195,7 @@ impl MealCommand {
         Ok(())
     }
 
-    async fn show_history(
+    fn show_history(
         &self,
         format: &OutputFormat,
         from: &Option<String>,
@@ -219,7 +216,7 @@ impl MealCommand {
         };
 
         // Fetch meal logs
-        let logs = repos.meallog.list_range(from_date, to_date).await?;
+        let logs = repos.meallog.list_range(from_date, to_date)?;
 
         if logs.is_empty() {
             println!("No meal history found for {} to {}", from_date, to_date);

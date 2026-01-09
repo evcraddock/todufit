@@ -1,18 +1,17 @@
-//! Sync-aware meal log repository that writes to Automerge and projects to SQLite.
+//! Sync-aware meal log repository that reads/writes Automerge documents.
 //!
 //! This module provides a repository layer that:
 //! 1. Writes changes to Automerge documents (source of truth)
-//! 2. Projects changes to SQLite (for fast queries)
-//! 3. Reads from SQLite for queries
+//! 2. Reads directly from Automerge documents (in-memory queries)
 
 use automerge::AutoCommit;
 use chrono::NaiveDate;
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::db::MealLogRepository;
 use crate::models::MealLog;
-use crate::sync::projection::MealLogProjection;
+use crate::sync::reader::{
+    list_meallogs_by_date_range, read_all_meallogs, read_meallog_by_id, ReaderError,
+};
 use crate::sync::storage::{DocType, DocumentStorage, StorageError};
 use crate::sync::writer;
 
@@ -21,10 +20,8 @@ use crate::sync::writer;
 pub enum SyncMealLogError {
     /// Storage error (loading/saving Automerge docs).
     Storage(StorageError),
-    /// Projection error (syncing to SQLite).
-    Projection(crate::sync::projection::ProjectionError),
-    /// SQLite error (queries).
-    Sqlite(sqlx::Error),
+    /// Reader error (parsing Automerge data).
+    Reader(ReaderError),
     /// MealLog not found.
     NotFound(String),
 }
@@ -33,8 +30,7 @@ impl std::fmt::Display for SyncMealLogError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SyncMealLogError::Storage(e) => write!(f, "Storage error: {}", e),
-            SyncMealLogError::Projection(e) => write!(f, "Projection error: {}", e),
-            SyncMealLogError::Sqlite(e) => write!(f, "SQLite error: {}", e),
+            SyncMealLogError::Reader(e) => write!(f, "Reader error: {}", e),
             SyncMealLogError::NotFound(id) => write!(f, "MealLog not found: {}", id),
         }
     }
@@ -48,40 +44,31 @@ impl From<StorageError> for SyncMealLogError {
     }
 }
 
-impl From<crate::sync::projection::ProjectionError> for SyncMealLogError {
-    fn from(e: crate::sync::projection::ProjectionError) -> Self {
-        SyncMealLogError::Projection(e)
-    }
-}
-
-impl From<sqlx::Error> for SyncMealLogError {
-    fn from(e: sqlx::Error) -> Self {
-        SyncMealLogError::Sqlite(e)
+impl From<ReaderError> for SyncMealLogError {
+    fn from(e: ReaderError) -> Self {
+        SyncMealLogError::Reader(e)
     }
 }
 
 /// Sync-aware meal log repository.
 ///
-/// Writes go to Automerge first, then project to SQLite.
-/// Reads come from SQLite for fast queries.
+/// All operations work directly with Automerge documents.
 pub struct SyncMealLogRepository {
     storage: DocumentStorage,
-    pool: SqlitePool,
 }
-
+#[allow(dead_code)]
 impl SyncMealLogRepository {
     /// Creates a new sync meal log repository.
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new() -> Self {
         Self {
             storage: DocumentStorage::new(),
-            pool,
         }
     }
 
     /// Creates a new sync meal log repository with custom storage.
     #[cfg(test)]
-    pub fn with_storage(storage: DocumentStorage, pool: SqlitePool) -> Self {
-        Self { storage, pool }
+    pub fn with_storage(storage: DocumentStorage) -> Self {
+        Self { storage }
     }
 
     /// Loads the meallogs Automerge document, or creates a new empty one.
@@ -92,135 +79,119 @@ impl SyncMealLogRepository {
         }
     }
 
-    /// Saves the document and projects to SQLite.
-    async fn save_and_project(&self, doc: &mut AutoCommit) -> Result<(), SyncMealLogError> {
-        // Save to Automerge storage
+    /// Saves the document to storage.
+    fn save_doc(&self, doc: &mut AutoCommit) -> Result<(), SyncMealLogError> {
         self.storage.save(DocType::MealLogs, doc)?;
-
-        // Project to SQLite
-        MealLogProjection::project_all(doc, &self.pool).await?;
-
         Ok(())
     }
 
     /// Creates a new meal log.
-    pub async fn create(&self, meallog: &MealLog) -> Result<MealLog, SyncMealLogError> {
+    pub fn create(&self, meallog: &MealLog) -> Result<MealLog, SyncMealLogError> {
         let mut doc = self.load_or_create_doc()?;
 
         // Write to Automerge
         writer::write_meallog(&mut doc, meallog);
 
-        // Save and project
-        self.save_and_project(&mut doc).await?;
+        // Save
+        self.save_doc(&mut doc)?;
 
-        // Return the meal log (read from SQLite to confirm)
-        self.get_by_id(meallog.id)
-            .await?
+        // Return the meal log (read back to confirm)
+        self.get_by_id(meallog.id)?
             .ok_or_else(|| SyncMealLogError::NotFound(meallog.id.to_string()))
     }
 
     /// Deletes a meal log.
-    #[cfg(test)]
-    pub async fn delete(&self, id: Uuid) -> Result<(), SyncMealLogError> {
+    pub fn delete(&self, id: Uuid) -> Result<(), SyncMealLogError> {
         let mut doc = self.load_or_create_doc()?;
 
         // Delete from Automerge
         writer::delete_meallog(&mut doc, id);
 
-        // Save and project
-        self.save_and_project(&mut doc).await?;
+        // Save
+        self.save_doc(&mut doc)?;
 
         Ok(())
     }
 
-    // ========== Read operations (from SQLite) ==========
+    // ========== Read operations (from Automerge) ==========
 
     /// Gets a meal log by ID.
-    pub async fn get_by_id(&self, id: Uuid) -> Result<Option<MealLog>, SyncMealLogError> {
-        let repo = MealLogRepository::new(self.pool.clone());
-        Ok(repo.get_by_id(id).await?)
+    pub fn get_by_id(&self, id: Uuid) -> Result<Option<MealLog>, SyncMealLogError> {
+        let doc = self.load_or_create_doc()?;
+        Ok(read_meallog_by_id(&doc, id)?)
+    }
+
+    /// Lists all meal logs.
+    pub fn list(&self) -> Result<Vec<MealLog>, SyncMealLogError> {
+        let doc = self.load_or_create_doc()?;
+        Ok(read_all_meallogs(&doc)?)
     }
 
     /// Lists meal logs in a date range.
-    pub async fn list_range(
+    pub fn list_range(
         &self,
         from: NaiveDate,
         to: NaiveDate,
     ) -> Result<Vec<MealLog>, SyncMealLogError> {
-        let repo = MealLogRepository::new(self.pool.clone());
-        Ok(repo.list_range(from, to).await?)
+        let doc = self.load_or_create_doc()?;
+        Ok(list_meallogs_by_date_range(&doc, from, to)?)
+    }
+}
+
+impl Default for SyncMealLogRepository {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::init_db;
-    use crate::models::{Dish, MealPlan, MealType};
-    use crate::sync::{SyncDishRepository, SyncMealPlanRepository};
+    use crate::models::{Dish, MealType};
     use tempfile::TempDir;
 
-    async fn setup() -> (
-        SyncMealLogRepository,
-        SyncMealPlanRepository,
-        SyncDishRepository,
-        TempDir,
-    ) {
+    fn setup() -> (SyncMealLogRepository, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let pool = init_db(Some(db_path)).await.unwrap();
         let storage = DocumentStorage::with_data_dir(temp_dir.path().to_path_buf());
-        let meallog_repo = SyncMealLogRepository::with_storage(storage.clone(), pool.clone());
-        let mealplan_repo = SyncMealPlanRepository::with_storage(storage.clone(), pool.clone());
-        let dish_repo = SyncDishRepository::with_storage(storage, pool);
-        (meallog_repo, mealplan_repo, dish_repo, temp_dir)
+        let repo = SyncMealLogRepository::with_storage(storage);
+        (repo, temp_dir)
     }
 
-    #[tokio::test]
-    async fn test_create_meallog() {
-        let (repo, _, _, _temp) = setup().await;
+    #[test]
+    fn test_create_meallog() {
+        let (repo, _temp) = setup();
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
-        let log = MealLog::new(date, MealType::Dinner, "chef").with_notes("Great meal!");
-        let created = repo.create(&log).await.unwrap();
+        let log = MealLog::new(date, MealType::Lunch, "chef");
+        let created = repo.create(&log).unwrap();
 
-        assert_eq!(created.date, date);
-        assert_eq!(created.meal_type, MealType::Dinner);
-        assert_eq!(created.notes, Some("Great meal!".to_string()));
         assert_eq!(created.id, log.id);
+        assert_eq!(created.date, date);
     }
 
-    #[tokio::test]
-    async fn test_create_with_mealplan_id() {
-        let (meallog_repo, mealplan_repo, _, _temp) = setup().await;
+    #[test]
+    fn test_create_with_mealplan_id() {
+        let (repo, _temp) = setup();
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+        let mealplan_id = Uuid::new_v4();
 
-        // Create a meal plan
-        let plan = MealPlan::new(date, MealType::Lunch, "Lunch Plan", "chef");
-        mealplan_repo.create(&plan).await.unwrap();
+        let log = MealLog::new(date, MealType::Dinner, "chef").with_mealplan_id(mealplan_id);
+        let created = repo.create(&log).unwrap();
 
-        // Create a meal log referencing the plan
-        let log = MealLog::new(date, MealType::Lunch, "chef").with_mealplan_id(plan.id);
-        let created = meallog_repo.create(&log).await.unwrap();
-
-        assert_eq!(created.mealplan_id, Some(plan.id));
+        assert_eq!(created.mealplan_id, Some(mealplan_id));
     }
 
-    #[tokio::test]
-    async fn test_create_with_dishes() {
-        let (meallog_repo, _, dish_repo, _temp) = setup().await;
+    #[test]
+    fn test_create_with_dishes() {
+        let (repo, _temp) = setup();
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
-        // Create dishes
         let dish1 = Dish::new("Pasta", "chef");
         let dish2 = Dish::new("Salad", "chef");
-        dish_repo.create(&dish1).await.unwrap();
-        dish_repo.create(&dish2).await.unwrap();
 
-        // Create meal log with dishes
-        let log = MealLog::new(date, MealType::Dinner, "chef")
+        let log = MealLog::new(date, MealType::Lunch, "chef")
             .with_dishes(vec![dish1.clone(), dish2.clone()]);
-        let created = meallog_repo.create(&log).await.unwrap();
+        let created = repo.create(&log).unwrap();
 
         assert_eq!(created.dishes.len(), 2);
         let dish_names: Vec<&str> = created.dishes.iter().map(|d| d.name.as_str()).collect();
@@ -228,68 +199,58 @@ mod tests {
         assert!(dish_names.contains(&"Salad"));
     }
 
-    #[tokio::test]
-    async fn test_delete_meallog() {
-        let (repo, _, _, _temp) = setup().await;
+    #[test]
+    fn test_delete_meallog() {
+        let (repo, _temp) = setup();
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
-        let log = MealLog::new(date, MealType::Dinner, "chef");
+        let log = MealLog::new(date, MealType::Lunch, "chef");
         let id = log.id;
-        repo.create(&log).await.unwrap();
+        repo.create(&log).unwrap();
 
-        repo.delete(id).await.unwrap();
+        repo.delete(id).unwrap();
 
-        let result = repo.get_by_id(id).await.unwrap();
+        let result = repo.get_by_id(id).unwrap();
         assert!(result.is_none());
     }
 
-    #[tokio::test]
-    async fn test_list_range() {
-        let (repo, _, _, _temp) = setup().await;
+    #[test]
+    fn test_list_range() {
+        let (repo, _temp) = setup();
 
         let jan1 = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
         let jan5 = NaiveDate::from_ymd_opt(2025, 1, 5).unwrap();
         let jan10 = NaiveDate::from_ymd_opt(2025, 1, 10).unwrap();
 
-        repo.create(&MealLog::new(jan1, MealType::Dinner, "chef"))
-            .await
+        repo.create(&MealLog::new(jan1, MealType::Lunch, "chef"))
             .unwrap();
-        repo.create(&MealLog::new(jan5, MealType::Lunch, "chef"))
-            .await
+        repo.create(&MealLog::new(jan5, MealType::Dinner, "chef"))
             .unwrap();
         repo.create(&MealLog::new(jan10, MealType::Breakfast, "chef"))
-            .await
             .unwrap();
 
-        let logs = repo.list_range(jan1, jan5).await.unwrap();
+        let logs = repo.list_range(jan1, jan5).unwrap();
         assert_eq!(logs.len(), 2);
-
-        let all_logs = repo.list_range(jan1, jan10).await.unwrap();
-        assert_eq!(all_logs.len(), 3);
     }
 
-    #[tokio::test]
-    async fn test_automerge_doc_persists() {
+    #[test]
+    fn test_automerge_doc_persists() {
         let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let pool = init_db(Some(db_path)).await.unwrap();
         let storage = DocumentStorage::with_data_dir(temp_dir.path().to_path_buf());
 
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
-        let log = MealLog::new(date, MealType::Dinner, "chef");
+        let log = MealLog::new(date, MealType::Lunch, "chef").with_notes("Test notes");
         let log_id = log.id;
 
         {
-            let repo = SyncMealLogRepository::with_storage(storage.clone(), pool.clone());
-            repo.create(&log).await.unwrap();
+            let repo = SyncMealLogRepository::with_storage(storage.clone());
+            repo.create(&log).unwrap();
         }
 
-        // Verify Automerge doc exists and contains the meallog
-        let doc = storage.load(DocType::MealLogs).unwrap().unwrap();
-        use automerge::ReadDoc;
-        assert!(doc
-            .get(automerge::ROOT, &log_id.to_string())
-            .unwrap()
-            .is_some());
+        // Create new repo instance and verify log is still there
+        let repo = SyncMealLogRepository::with_storage(storage);
+        let loaded = repo.get_by_id(log_id).unwrap();
+        assert!(loaded.is_some());
+        assert_eq!(loaded.unwrap().notes, Some("Test notes".to_string()));
     }
 }

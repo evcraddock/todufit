@@ -190,7 +190,7 @@ fn parse_nutrients(json: &str) -> Result<Vec<Nutrient>, Box<dyn std::error::Erro
 }
 
 impl DishCommand {
-    pub async fn run(
+    pub fn run(
         &self,
         repo: &SyncDishRepository,
         config: &Config,
@@ -239,14 +239,14 @@ impl DishCommand {
                     dish = dish.with_nutrients(parsed);
                 }
 
-                let created = repo.create(&dish).await?;
+                let created = repo.create(&dish)?;
                 println!("Created dish:");
                 println!("{}", created);
                 Ok(())
             }
 
             DishSubcommand::List { format, tag } => {
-                let dishes = repo.list().await?;
+                let dishes = repo.list()?;
 
                 // Filter by tag if specified
                 let dishes: Vec<_> = if let Some(tag) = tag {
@@ -289,9 +289,9 @@ impl DishCommand {
             DishSubcommand::Show { identifier, format } => {
                 // Try to parse as UUID first, then fall back to name lookup
                 let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
-                    repo.get_by_id(uuid).await?
+                    repo.get_by_id(uuid)?
                 } else {
-                    repo.get_by_name(identifier).await?
+                    repo.get_by_name(identifier)?
                 };
 
                 match dish {
@@ -341,9 +341,9 @@ impl DishCommand {
 
                 // Find the dish
                 let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
-                    repo.get_by_id(uuid).await?
+                    repo.get_by_id(uuid)?
                 } else {
-                    repo.get_by_name(identifier).await?
+                    repo.get_by_name(identifier)?
                 };
 
                 let mut dish = match dish {
@@ -397,7 +397,7 @@ impl DishCommand {
                     dish.nutrients = Some(parsed);
                 }
 
-                let updated = repo.update(&dish).await?;
+                let updated = repo.update(&dish)?;
                 println!("Updated dish:");
                 println!("{}", updated);
                 Ok(())
@@ -406,9 +406,9 @@ impl DishCommand {
             DishSubcommand::Delete { identifier, force } => {
                 // Find the dish
                 let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
-                    repo.get_by_id(uuid).await?
+                    repo.get_by_id(uuid)?
                 } else {
-                    repo.get_by_name(identifier).await?
+                    repo.get_by_name(identifier)?
                 };
 
                 let dish = match dish {
@@ -430,7 +430,7 @@ impl DishCommand {
                     }
                 }
 
-                repo.delete(dish.id).await?;
+                repo.delete(dish.id)?;
                 println!("Deleted dish: {}", dish.name);
                 Ok(())
             }
@@ -448,9 +448,9 @@ impl DishCommand {
 
                 // Find the dish
                 let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
-                    repo.get_by_id(uuid).await?
+                    repo.get_by_id(uuid)?
                 } else {
-                    repo.get_by_name(identifier).await?
+                    repo.get_by_name(identifier)?
                 };
 
                 let dish = match dish {
@@ -459,19 +459,18 @@ impl DishCommand {
                 };
 
                 let ingredient = Ingredient::new(name, *quantity, unit);
-                repo.add_ingredient(dish.id, &ingredient).await?;
-
                 println!("Added ingredient to '{}':", dish.name);
                 println!("  {}", ingredient);
+                repo.add_ingredient(dish.id, ingredient)?;
                 Ok(())
             }
 
             DishSubcommand::RemoveIngredient { identifier, name } => {
                 // Find the dish
                 let dish = if let Ok(uuid) = Uuid::parse_str(identifier) {
-                    repo.get_by_id(uuid).await?
+                    repo.get_by_id(uuid)?
                 } else {
-                    repo.get_by_name(identifier).await?
+                    repo.get_by_name(identifier)?
                 };
 
                 let dish = match dish {
@@ -489,7 +488,7 @@ impl DishCommand {
                     return Err(format!("Ingredient not found: {}", name).into());
                 }
 
-                repo.remove_ingredient(dish.id, name).await?;
+                repo.remove_ingredient(dish.id, name)?;
                 println!("Removed ingredient '{}' from '{}'", name, dish.name);
                 Ok(())
             }

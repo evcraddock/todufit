@@ -26,6 +26,7 @@ impl DocumentStorage {
         Self(CoreDocumentStorage::new(data_dir))
     }
 
+    #[allow(dead_code)]
     /// Returns the full path for a document type.
     pub fn path(&self, doc_type: DocType) -> PathBuf {
         self.0.path(doc_type)

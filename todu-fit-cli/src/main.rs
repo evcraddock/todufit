@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 mod commands;
 mod config;
-mod db;
 mod models;
 mod sync;
 
@@ -12,8 +11,7 @@ use commands::{
     SyncCommand,
 };
 use config::Config;
-use db::{init_db, DishRepository};
-use sync::{SyncClient, SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
+use sync::{SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
 
 #[derive(Parser)]
 #[command(name = "fit")]
@@ -49,15 +47,14 @@ enum Commands {
     Sync(SyncCommand),
 }
 
-#[tokio::main]
-async fn main() {
-    if let Err(e) = run().await {
+fn main() {
+    if let Err(e) = run() {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     // Save config path for init command
@@ -66,92 +63,40 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Load configuration
     let config = Config::load(cli.config)?;
 
-    // Track if we should auto-sync after the command
-    let mut should_auto_sync = false;
-    let mut pool_for_sync = None;
-
     match cli.command {
         Some(Commands::Auth(cmd)) => {
-            cmd.run(&config).await?;
+            cmd.run(&config)?;
         }
         Some(Commands::Dish(cmd)) => {
-            let pool = init_db(Some(config.database_path.value.clone())).await?;
-            // Sync before command if auto_sync enabled
-            if config.sync.auto_sync && config.sync.is_configured() {
-                auto_sync(&pool, &config).await;
-            }
-            let repo = SyncDishRepository::new(pool.clone());
-            cmd.run(&repo, &config).await?;
-            should_auto_sync = true;
-            pool_for_sync = Some(pool);
+            let repo = SyncDishRepository::new();
+            cmd.run(&repo, &config)?;
         }
         Some(Commands::Meal(cmd)) => {
-            let pool = init_db(Some(config.database_path.value.clone())).await?;
-            // Sync before command if auto_sync enabled
-            if config.sync.auto_sync && config.sync.is_configured() {
-                auto_sync(&pool, &config).await;
-            }
-            let meallog_repo = SyncMealLogRepository::new(pool.clone());
-            let mealplan_repo = SyncMealPlanRepository::new(pool.clone());
-            let dish_repo = DishRepository::new(pool.clone());
+            let meallog_repo = SyncMealLogRepository::new();
+            let mealplan_repo = SyncMealPlanRepository::new();
+            let dish_repo = SyncDishRepository::new();
             let repos = MealRepos {
                 meallog: &meallog_repo,
                 mealplan: &mealplan_repo,
                 dish: &dish_repo,
             };
-            cmd.run(repos, &config).await?;
-            should_auto_sync = true;
-            pool_for_sync = Some(pool);
+            cmd.run(repos, &config)?;
         }
         Some(Commands::Mealplan(cmd)) => {
-            let pool = init_db(Some(config.database_path.value.clone())).await?;
-            // Sync before command if auto_sync enabled
-            if config.sync.auto_sync && config.sync.is_configured() {
-                auto_sync(&pool, &config).await;
-            }
-            let mealplan_repo = SyncMealPlanRepository::new(pool.clone());
-            let dish_repo = DishRepository::new(pool.clone());
-            cmd.run(&mealplan_repo, &dish_repo, &config).await?;
-            should_auto_sync = true;
-            pool_for_sync = Some(pool);
+            let mealplan_repo = SyncMealPlanRepository::new();
+            let dish_repo = SyncDishRepository::new();
+            cmd.run(&mealplan_repo, &dish_repo, &config)?;
         }
         Some(Commands::Config(cmd)) => {
             cmd.run(&config, cli_config_path)?;
         }
         Some(Commands::Sync(cmd)) => {
-            let pool = init_db(Some(config.database_path.value.clone())).await?;
-            cmd.run(&pool, &config).await?;
+            cmd.run(&config)?;
         }
         None => {
             println!("Use --help to see available commands");
         }
     }
 
-    // Auto-sync if enabled and we ran a data command
-    if should_auto_sync && config.sync.auto_sync && config.sync.is_configured() {
-        if let Some(pool) = pool_for_sync {
-            auto_sync(&pool, &config).await;
-        }
-    }
-
     Ok(())
-}
-
-/// Perform auto-sync in background, failing silently
-async fn auto_sync(pool: &sqlx::SqlitePool, config: &Config) {
-    match SyncClient::from_config(&config.sync) {
-        Ok(mut client) => {
-            match client.sync_and_project(pool).await {
-                Ok(_) => {
-                    // Sync succeeded silently
-                }
-                Err(_) => {
-                    // Sync failed silently - server might be unreachable
-                }
-            }
-        }
-        Err(_) => {
-            // Config error - shouldn't happen since we checked is_configured
-        }
-    }
 }

@@ -28,9 +28,13 @@ enum AuthSubcommand {
 }
 
 impl AuthCommand {
-    pub async fn run(&self, config: &Config) -> Result<(), AuthError> {
+    pub fn run(&self, config: &Config) -> Result<(), AuthError> {
+        // Use tokio runtime for async operations
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| AuthError::ConfigError(format!("Failed to create runtime: {}", e)))?;
+
         match &self.command {
-            AuthSubcommand::Login => login(config).await,
+            AuthSubcommand::Login => rt.block_on(login(config)),
             AuthSubcommand::Logout => logout(config),
             AuthSubcommand::Status => status(config),
         }

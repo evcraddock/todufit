@@ -25,7 +25,7 @@ pub mod client;
 pub mod dish_sync;
 pub mod meallog_sync;
 pub mod mealplan_sync;
-pub mod projection;
+pub mod reader;
 #[cfg(test)]
 pub mod schema;
 pub mod storage;
@@ -35,5 +35,4 @@ pub use client::{SyncClient, SyncClientError};
 pub use dish_sync::SyncDishRepository;
 pub use meallog_sync::SyncMealLogRepository;
 pub use mealplan_sync::SyncMealPlanRepository;
-pub use projection::{DishProjection, MealLogProjection, MealPlanProjection};
 pub use storage::DocType;
