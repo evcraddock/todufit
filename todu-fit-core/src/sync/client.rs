@@ -190,10 +190,10 @@ impl SyncClient {
         let join_msg = ProtocolMessage::Join {
             sender_id: peer_id.to_string(),
             supported_protocol_versions: vec!["1".to_string()],
-            metadata: Some(PeerMetadata {
+            peer_metadata: PeerMetadata {
                 storage_id: None,
-                is_ephemeral: true,
-            }),
+                is_ephemeral: false,
+            },
         };
 
         let encoded = join_msg
@@ -284,7 +284,8 @@ impl SyncClient {
         let initial_heads = doc.get_heads().to_vec();
 
         // Use automerge URL format for document ID
-        let doc_id_str = doc_id.to_url();
+        // Use bs58check format without the automerge: prefix
+        let doc_id_str = doc_id.to_bs58check();
 
         // Initialize sync state
         let mut sync_state = SyncState::new();
@@ -297,12 +298,12 @@ impl SyncClient {
             .map(|m| m.encode())
             .unwrap_or_default();
 
+        // Target the server specifically
         let protocol_msg = ProtocolMessage::Request {
-            document_id: doc_id_str.clone(),
             sender_id: peer_id.to_string(),
             target_id: server_peer_id.to_string(),
-            doc_type: String::new(), // Not used in no-auth mode
-            data: sync_data,
+            document_id: doc_id_str.clone(),
+            data: sync_data.clone(),
         };
 
         let encoded = protocol_msg
@@ -320,8 +321,12 @@ impl SyncClient {
         loop {
             match timeout(DOC_IDLE_TIMEOUT, receiver.next()).await {
                 Ok(Some(Ok(Message::Binary(data)))) => {
-                    let msg = ProtocolMessage::decode(&data)
-                        .map_err(|e| SyncError::CborError(e.to_string()))?;
+                    let msg = match ProtocolMessage::decode(&data) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            return Err(SyncError::CborError(e.to_string()));
+                        }
+                    };
 
                     match msg {
                         ProtocolMessage::Sync {
@@ -331,11 +336,10 @@ impl SyncClient {
                             target_id: _,
                         }
                         | ProtocolMessage::Request {
-                            document_id,
-                            data,
                             sender_id: _,
                             target_id: _,
-                            doc_type: _,
+                            document_id,
+                            data,
                         } => {
                             if document_id != doc_id_str {
                                 // Message for a different document - skip

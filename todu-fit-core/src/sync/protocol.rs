@@ -14,10 +14,10 @@ pub enum ProtocolMessage {
     Join {
         #[serde(rename = "senderId")]
         sender_id: String,
+        #[serde(rename = "peerMetadata")]
+        peer_metadata: PeerMetadata,
         #[serde(rename = "supportedProtocolVersions")]
         supported_protocol_versions: Vec<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        metadata: Option<PeerMetadata>,
     },
     /// Leave message - sent by client before disconnecting
     #[serde(rename = "leave")]
@@ -38,14 +38,12 @@ pub enum ProtocolMessage {
     /// Request message - initial sync request for a document
     #[serde(rename = "request")]
     Request {
-        #[serde(rename = "documentId")]
-        document_id: String,
         #[serde(rename = "senderId")]
         sender_id: String,
         #[serde(rename = "targetId")]
         target_id: String,
-        #[serde(rename = "docType")]
-        doc_type: String,
+        #[serde(rename = "documentId")]
+        document_id: String,
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
     },
@@ -121,11 +119,11 @@ mod tests {
     fn test_join_message_encode_decode() {
         let msg = ProtocolMessage::Join {
             sender_id: "peer123".to_string(),
-            supported_protocol_versions: vec!["1".to_string()],
-            metadata: Some(PeerMetadata {
+            peer_metadata: PeerMetadata {
                 storage_id: None,
                 is_ephemeral: true,
-            }),
+            },
+            supported_protocol_versions: vec!["1".to_string()],
         };
 
         let encoded = msg.encode().unwrap();
@@ -134,15 +132,13 @@ mod tests {
         match decoded {
             ProtocolMessage::Join {
                 sender_id,
+                peer_metadata,
                 supported_protocol_versions,
-                metadata,
             } => {
                 assert_eq!(sender_id, "peer123");
                 assert_eq!(supported_protocol_versions, vec!["1".to_string()]);
-                assert!(metadata.is_some());
-                let meta = metadata.unwrap();
-                assert!(meta.storage_id.is_none());
-                assert!(meta.is_ephemeral);
+                assert!(peer_metadata.storage_id.is_none());
+                assert!(peer_metadata.is_ephemeral);
             }
             _ => panic!("Expected Join message"),
         }
@@ -151,10 +147,9 @@ mod tests {
     #[test]
     fn test_request_message_encode_decode() {
         let msg = ProtocolMessage::Request {
-            document_id: "doc123".to_string(),
             sender_id: "peer1".to_string(),
             target_id: "peer2".to_string(),
-            doc_type: "dishes".to_string(),
+            document_id: "doc123".to_string(),
             data: vec![1, 2, 3, 4, 5],
         };
 
@@ -163,16 +158,14 @@ mod tests {
 
         match decoded {
             ProtocolMessage::Request {
-                document_id,
                 sender_id,
                 target_id,
-                doc_type,
+                document_id,
                 data,
             } => {
                 assert_eq!(document_id, "doc123");
                 assert_eq!(sender_id, "peer1");
                 assert_eq!(target_id, "peer2");
-                assert_eq!(doc_type, "dishes");
                 assert_eq!(data, vec![1, 2, 3, 4, 5]);
             }
             _ => panic!("Expected Request message"),
