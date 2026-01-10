@@ -36,7 +36,7 @@ impl<T> ConfigValue<T> {
 /// Sync configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SyncConfig {
-    /// Server URL (e.g., "ws://localhost:8080" or "wss://sync.example.com")
+    /// Server URL (e.g., "ws://localhost:3030" or "wss://sync.example.com")
     pub server_url: Option<String>,
     /// Enable automatic sync after writes (default: false)
     #[serde(default)]
@@ -53,8 +53,8 @@ impl SyncConfig {
 /// Application configuration with source tracking
 #[derive(Debug, Clone, Serialize)]
 pub struct Config {
-    /// Path to the SQLite database
-    pub database_path: ConfigValue<PathBuf>,
+    /// Directory for storing data (identity, groups, documents)
+    pub data_dir: ConfigValue<PathBuf>,
     /// Default user name for new dishes
     pub created_by: ConfigValue<String>,
     /// Config file path used (if any)
@@ -68,7 +68,7 @@ pub struct Config {
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 struct ConfigFile {
-    database_path: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
     created_by: Option<String>,
     sync: Option<SyncConfig>,
 }
@@ -76,11 +76,11 @@ struct ConfigFile {
 impl Config {
     /// Load configuration with priority: env vars > config file > defaults
     pub fn load(config_path: Option<PathBuf>) -> Result<Self, ConfigError> {
-        let default_db_path = Self::default_data_dir().join("fit.db");
+        let default_data_dir = Self::default_data_dir();
         let default_created_by = "default".to_string();
 
         // Start with defaults
-        let mut database_path = ConfigValue::new(default_db_path.clone(), ConfigSource::Default);
+        let mut data_dir = ConfigValue::new(default_data_dir.clone(), ConfigSource::Default);
         let mut created_by = ConfigValue::new(default_created_by.clone(), ConfigSource::Default);
         let mut config_file = None;
         let mut sync = SyncConfig::default();
@@ -95,14 +95,14 @@ impl Config {
 
             config_file = Some(path.clone());
 
-            if let Some(db_path) = file_config.database_path {
+            if let Some(dir) = file_config.data_dir {
                 // Resolve relative paths against config file's directory
-                let resolved_path = if db_path.is_relative() {
-                    path.parent().map(|p| p.join(&db_path)).unwrap_or(db_path)
+                let resolved_path = if dir.is_relative() {
+                    path.parent().map(|p| p.join(&dir)).unwrap_or(dir)
                 } else {
-                    db_path
+                    dir
                 };
-                database_path = ConfigValue::new(resolved_path, ConfigSource::File);
+                data_dir = ConfigValue::new(resolved_path, ConfigSource::File);
             }
             if let Some(user) = file_config.created_by {
                 created_by = ConfigValue::new(user, ConfigSource::File);
@@ -113,8 +113,8 @@ impl Config {
         }
 
         // Apply environment variable overrides
-        if let Ok(db_path) = std::env::var("FIT_DATABASE_PATH") {
-            database_path = ConfigValue::new(PathBuf::from(db_path), ConfigSource::Environment);
+        if let Ok(dir) = std::env::var("FIT_DATA_DIR") {
+            data_dir = ConfigValue::new(PathBuf::from(dir), ConfigSource::Environment);
         }
         if let Ok(user) = std::env::var("FIT_CREATED_BY") {
             created_by = ConfigValue::new(user, ConfigSource::Environment);
@@ -125,7 +125,7 @@ impl Config {
         }
 
         Ok(Self {
-            database_path,
+            data_dir,
             created_by,
             config_file,
             sync,
@@ -191,14 +191,9 @@ mod tests {
         let config_path = temp_dir.path().join("nonexistent.yaml");
 
         let config = Config::load(Some(config_path)).unwrap();
-        assert!(config
-            .database_path
-            .value
-            .to_string_lossy()
-            .contains("fit.db"));
-        assert_eq!(config.database_path.source, ConfigSource::Default);
         assert_eq!(config.created_by.value, "default");
         assert_eq!(config.created_by.source, ConfigSource::Default);
+        assert_eq!(config.data_dir.source, ConfigSource::Default);
     }
 
     #[test]
@@ -206,21 +201,27 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("config.yaml");
 
-        // Use relative path - works cross-platform and tests path resolution
         let mut file = std::fs::File::create(&config_path).unwrap();
-        writeln!(file, "database_path: data/db.sqlite").unwrap();
         writeln!(file, "created_by: testuser").unwrap();
 
         let config = Config::load(Some(config_path.clone())).unwrap();
-        // Relative path should be resolved against config file directory
-        assert_eq!(
-            config.database_path.value,
-            temp_dir.path().join("data/db.sqlite")
-        );
-        assert_eq!(config.database_path.source, ConfigSource::File);
         assert_eq!(config.created_by.value, "testuser");
         assert_eq!(config.created_by.source, ConfigSource::File);
         assert_eq!(config.config_file, Some(config_path));
+    }
+
+    #[test]
+    fn test_load_data_dir_from_file() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("config.yaml");
+
+        let mut file = std::fs::File::create(&config_path).unwrap();
+        writeln!(file, "data_dir: ./mydata").unwrap();
+
+        let config = Config::load(Some(config_path.clone())).unwrap();
+        // Relative path resolved against config file directory
+        assert_eq!(config.data_dir.value, temp_dir.path().join("mydata"));
+        assert_eq!(config.data_dir.source, ConfigSource::File);
     }
 
     #[test]
@@ -264,10 +265,8 @@ mod tests {
 
         let mut file = std::fs::File::create(&config_path).unwrap();
         writeln!(file, "created_by: fileuser").unwrap();
-        // database_path not specified
 
         let config = Config::load(Some(config_path)).unwrap();
-        assert_eq!(config.database_path.source, ConfigSource::Default);
         assert_eq!(config.created_by.value, "fileuser");
         assert_eq!(config.created_by.source, ConfigSource::File);
     }

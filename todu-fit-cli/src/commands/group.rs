@@ -2,7 +2,7 @@
 
 use clap::{Args, Subcommand};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use todu_fit_core::{DocumentId, Identity, IdentityState, MultiDocStorage};
 
@@ -50,8 +50,9 @@ enum GroupSubcommand {
 }
 
 impl GroupCommand {
-    pub fn run(&self, _config: &Config) -> Result<(), GroupError> {
-        let storage = MultiDocStorage::new(Config::default_data_dir());
+    pub fn run(&self, config: &Config) -> Result<(), GroupError> {
+        let data_dir = &config.data_dir.value;
+        let storage = MultiDocStorage::new(data_dir.clone());
         let identity = Identity::new(storage);
 
         // Most group commands require initialized identity
@@ -70,16 +71,18 @@ impl GroupCommand {
         }
 
         match &self.command {
-            GroupSubcommand::Create { name } => self.create(&identity, name),
-            GroupSubcommand::Join { id, name } => self.join(&identity, id, name.as_deref()),
-            GroupSubcommand::List => self.list(&identity),
-            GroupSubcommand::Switch { name } => self.switch(name),
-            GroupSubcommand::Show => self.show(&identity),
-            GroupSubcommand::Leave { name, force } => self.leave(&identity, name, *force),
+            GroupSubcommand::Create { name } => self.create(&identity, data_dir, name),
+            GroupSubcommand::Join { id, name } => {
+                self.join(&identity, data_dir, id, name.as_deref())
+            }
+            GroupSubcommand::List => self.list(&identity, data_dir),
+            GroupSubcommand::Switch { name } => self.switch(data_dir, name),
+            GroupSubcommand::Show => self.show(&identity, data_dir),
+            GroupSubcommand::Leave { name, force } => self.leave(&identity, data_dir, name, *force),
         }
     }
 
-    fn create(&self, identity: &Identity, name: &str) -> Result<(), GroupError> {
+    fn create(&self, identity: &Identity, data_dir: &Path, name: &str) -> Result<(), GroupError> {
         let group_id = identity.create_group(name)?;
 
         println!("✓ Group '{}' created successfully!", name);
@@ -96,7 +99,7 @@ impl GroupCommand {
         // Auto-switch to the new group if it's the first one
         let groups = identity.list_groups()?;
         if groups.len() == 1 {
-            save_current_group(name)?;
+            save_current_group(data_dir, name)?;
             println!();
             println!("This is your first group, so it's now your current group.");
         }
@@ -104,7 +107,13 @@ impl GroupCommand {
         Ok(())
     }
 
-    fn join(&self, identity: &Identity, id: &str, name: Option<&str>) -> Result<(), GroupError> {
+    fn join(
+        &self,
+        identity: &Identity,
+        data_dir: &Path,
+        id: &str,
+        name: Option<&str>,
+    ) -> Result<(), GroupError> {
         let doc_id = DocumentId::from_bs58check(id)
             .map_err(|e| GroupError::InvalidDocId(id.to_string(), e.to_string()))?;
 
@@ -122,7 +131,7 @@ impl GroupCommand {
         // Auto-switch to the new group if it's the first one
         let groups = identity.list_groups()?;
         if groups.len() == 1 {
-            save_current_group(group_name)?;
+            save_current_group(data_dir, group_name)?;
             println!();
             println!("This is your first group, so it's now your current group.");
         }
@@ -130,9 +139,9 @@ impl GroupCommand {
         Ok(())
     }
 
-    fn list(&self, identity: &Identity) -> Result<(), GroupError> {
+    fn list(&self, identity: &Identity, data_dir: &Path) -> Result<(), GroupError> {
         let groups = identity.list_groups()?;
-        let current = load_current_group();
+        let current = load_current_group(data_dir);
 
         if groups.is_empty() {
             println!("No groups.");
@@ -161,8 +170,8 @@ impl GroupCommand {
         Ok(())
     }
 
-    fn switch(&self, name: &str) -> Result<(), GroupError> {
-        let storage = MultiDocStorage::new(Config::default_data_dir());
+    fn switch(&self, data_dir: &Path, name: &str) -> Result<(), GroupError> {
+        let storage = MultiDocStorage::new(data_dir.to_path_buf());
         let identity = Identity::new(storage);
 
         // Verify group exists
@@ -171,7 +180,7 @@ impl GroupCommand {
 
         match group {
             Some(g) => {
-                save_current_group(&g.name)?;
+                save_current_group(data_dir, &g.name)?;
                 println!("Switched to group '{}'", g.name);
             }
             None => {
@@ -187,8 +196,8 @@ impl GroupCommand {
         Ok(())
     }
 
-    fn show(&self, identity: &Identity) -> Result<(), GroupError> {
-        let current_name = load_current_group();
+    fn show(&self, identity: &Identity, data_dir: &Path) -> Result<(), GroupError> {
+        let current_name = load_current_group(data_dir);
 
         let groups = identity.list_groups()?;
 
@@ -245,7 +254,13 @@ impl GroupCommand {
         Ok(())
     }
 
-    fn leave(&self, identity: &Identity, name: &str, force: bool) -> Result<(), GroupError> {
+    fn leave(
+        &self,
+        identity: &Identity,
+        data_dir: &Path,
+        name: &str,
+        force: bool,
+    ) -> Result<(), GroupError> {
         let groups = identity.list_groups()?;
         let group = groups.iter().find(|g| g.name.eq_ignore_ascii_case(name));
 
@@ -272,9 +287,9 @@ impl GroupCommand {
                 println!("Left group '{}'", g.name);
 
                 // Clear current group if it was the one we left
-                if let Some(current) = load_current_group() {
+                if let Some(current) = load_current_group(data_dir) {
                     if current.eq_ignore_ascii_case(name) {
-                        clear_current_group()?;
+                        clear_current_group(data_dir)?;
                     }
                 }
             }
@@ -289,19 +304,19 @@ impl GroupCommand {
 
 // ==================== Current Group Persistence ====================
 
-fn current_group_path() -> PathBuf {
-    Config::default_data_dir().join("current_group")
+fn current_group_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("current_group")
 }
 
-fn load_current_group() -> Option<String> {
-    fs::read_to_string(current_group_path())
+fn load_current_group(data_dir: &Path) -> Option<String> {
+    fs::read_to_string(current_group_path(data_dir))
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
 
-fn save_current_group(name: &str) -> Result<(), GroupError> {
-    let path = current_group_path();
+fn save_current_group(data_dir: &Path, name: &str) -> Result<(), GroupError> {
+    let path = current_group_path(data_dir);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -309,18 +324,12 @@ fn save_current_group(name: &str) -> Result<(), GroupError> {
     Ok(())
 }
 
-fn clear_current_group() -> Result<(), GroupError> {
-    let path = current_group_path();
+fn clear_current_group(data_dir: &Path) -> Result<(), GroupError> {
+    let path = current_group_path(data_dir);
     if path.exists() {
         fs::remove_file(path)?;
     }
     Ok(())
-}
-
-/// Get the current group name (public for use by other commands)
-#[allow(dead_code)]
-pub fn get_current_group() -> Option<String> {
-    load_current_group()
 }
 
 /// Errors from group command

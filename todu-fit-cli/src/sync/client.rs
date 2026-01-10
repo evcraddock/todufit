@@ -1,11 +1,14 @@
 //! WebSocket sync client wrapper for the CLI.
 //!
-//! This module wraps the core sync client and adds CLI-specific functionality
-//! like storage management and identity-based document discovery.
+//! This module wraps the core sync client and provides identity-based
+//! document synchronization.
+
+use std::path::PathBuf;
 
 use automerge::AutoCommit;
 
-use super::storage::{DocType, DocumentStorage};
+use todu_fit_core::{DocumentId, Identity, IdentityState, MultiDocStorage};
+
 use crate::config::SyncConfig;
 
 // Re-export core types
@@ -16,10 +19,16 @@ pub use todu_fit_core::sync::{SyncClient as CoreSyncClient, SyncError as CoreSyn
 pub enum SyncClientError {
     /// Sync is not configured
     NotConfigured,
+    /// Identity not initialized
+    NotInitialized,
+    /// No groups configured
+    NoGroups,
     /// Core sync error
     SyncError(CoreSyncError),
     /// Storage error
     StorageError(String),
+    /// Identity error
+    IdentityError(String),
 }
 
 impl std::fmt::Display for SyncClientError {
@@ -28,8 +37,18 @@ impl std::fmt::Display for SyncClientError {
             SyncClientError::NotConfigured => {
                 write!(f, "Sync not configured. Add server_url to config.")
             }
+            SyncClientError::NotInitialized => {
+                write!(f, "Identity not initialized. Run 'fit init --new' first.")
+            }
+            SyncClientError::NoGroups => {
+                write!(
+                    f,
+                    "No groups configured. Run 'fit group create <name>' first."
+                )
+            }
             SyncClientError::SyncError(e) => write!(f, "{}", e),
             SyncClientError::StorageError(e) => write!(f, "Storage error: {}", e),
+            SyncClientError::IdentityError(e) => write!(f, "Identity error: {}", e),
         }
     }
 }
@@ -42,22 +61,43 @@ impl From<CoreSyncError> for SyncClientError {
     }
 }
 
-/// Sync client for the CLI that manages storage.
-///
-/// This is a transitional implementation that syncs documents by DocType
-/// for backward compatibility. Future versions will use Identity-based
-/// document discovery.
+/// Result of syncing a single document.
+#[derive(Debug, Clone)]
+pub struct DocSyncResult {
+    /// Human-readable name for the document
+    pub name: String,
+    /// Whether the document was updated
+    pub updated: bool,
+    /// Number of sync round-trips
+    pub rounds: usize,
+}
+
+/// Result of a full sync operation.
+#[derive(Debug)]
+pub struct SyncResult {
+    /// Results for each document synced
+    pub documents: Vec<DocSyncResult>,
+}
+
+impl SyncResult {
+    /// Returns true if any document was updated.
+    pub fn any_updated(&self) -> bool {
+        self.documents.iter().any(|r| r.updated)
+    }
+}
+
+/// Sync client for the CLI that uses identity-based document discovery.
 #[derive(Debug)]
 pub struct SyncClient {
     core: CoreSyncClient,
-    storage: DocumentStorage,
+    storage: MultiDocStorage,
 }
 
 impl SyncClient {
     /// Creates a new sync client from config.
     ///
     /// Returns an error if sync is not configured.
-    pub fn from_config(config: &SyncConfig) -> Result<Self, SyncClientError> {
+    pub fn from_config(config: &SyncConfig, data_dir: PathBuf) -> Result<Self, SyncClientError> {
         let server_url = config
             .server_url
             .clone()
@@ -65,139 +105,158 @@ impl SyncClient {
 
         Ok(Self {
             core: CoreSyncClient::new(server_url),
-            storage: DocumentStorage::new(),
+            storage: MultiDocStorage::new(data_dir),
         })
     }
 
-    /// Creates a new sync client with explicit server URL.
-    #[cfg(test)]
-    pub fn new(server_url: String) -> Self {
-        Self {
-            core: CoreSyncClient::new(server_url),
-            storage: DocumentStorage::new(),
+    /// Syncs all documents based on identity.
+    ///
+    /// This syncs:
+    /// - The identity document itself
+    /// - All group documents
+    /// - All dishes and mealplans documents for each group
+    /// - The personal meallogs document
+    pub async fn sync_all(&mut self) -> Result<SyncResult, SyncClientError> {
+        let identity = Identity::new(self.storage.clone());
+
+        // Check identity state
+        match identity.state() {
+            IdentityState::Uninitialized => return Err(SyncClientError::NotInitialized),
+            IdentityState::PendingSync | IdentityState::Initialized => {}
         }
+
+        let mut results = Vec::new();
+
+        // 1. Sync identity document
+        let identity_doc_id = identity
+            .root_doc_id()
+            .map_err(|e| SyncClientError::IdentityError(e.to_string()))?
+            .ok_or(SyncClientError::NotInitialized)?;
+
+        results.push(self.sync_document(&identity_doc_id, "identity").await?);
+
+        // Reload identity after sync (it may have been updated)
+        let identity = Identity::new(self.storage.clone());
+
+        // 2. Get identity document for meallogs doc ID
+        let identity_doc = identity
+            .load_identity()
+            .map_err(|e| SyncClientError::IdentityError(e.to_string()))?;
+
+        // 3. Sync personal meallogs
+        results.push(
+            self.sync_document(&identity_doc.meallogs_doc_id, "meallogs")
+                .await?,
+        );
+
+        // 4. Sync each group and its documents
+        let groups = identity
+            .list_groups()
+            .map_err(|e| SyncClientError::IdentityError(e.to_string()))?;
+
+        if groups.is_empty() {
+            return Err(SyncClientError::NoGroups);
+        }
+
+        for group_ref in groups {
+            // Sync group document
+            let group_name = format!("group:{}", group_ref.name);
+            results.push(self.sync_document(&group_ref.doc_id, &group_name).await?);
+
+            // Load group to get dishes/mealplans doc IDs
+            match identity.load_group(&group_ref.doc_id) {
+                Ok(group_doc) => {
+                    // Sync dishes
+                    let dishes_name = format!("{}:dishes", group_ref.name);
+                    results.push(
+                        self.sync_document(&group_doc.dishes_doc_id, &dishes_name)
+                            .await?,
+                    );
+
+                    // Sync mealplans
+                    let mealplans_name = format!("{}:mealplans", group_ref.name);
+                    results.push(
+                        self.sync_document(&group_doc.mealplans_doc_id, &mealplans_name)
+                            .await?,
+                    );
+                }
+                Err(_) => {
+                    // Group document not synced yet, will get it next time
+                }
+            }
+        }
+
+        Ok(SyncResult { documents: results })
     }
 
-    /// Syncs a single document type with the server.
-    ///
-    /// Note: This is a transitional method. It uses a fixed DocumentId
-    /// based on the DocType for backward compatibility.
-    pub async fn sync_document(
+    /// Syncs a single document by ID.
+    async fn sync_document(
         &mut self,
-        doc_type: DocType,
-    ) -> Result<LegacySyncResult, SyncClientError> {
+        doc_id: &DocumentId,
+        name: &str,
+    ) -> Result<DocSyncResult, SyncClientError> {
         // Load or create local document
         let mut doc = self
             .storage
-            .load(doc_type)
+            .load(doc_id)
             .map_err(|e| SyncClientError::StorageError(e.to_string()))?
+            .map(|bytes| {
+                AutoCommit::load(&bytes).map_err(|e| SyncClientError::StorageError(e.to_string()))
+            })
+            .transpose()?
             .unwrap_or_else(AutoCommit::new);
 
-        // Generate a deterministic DocumentId from the doc type
-        // This is a transitional approach - production should use Identity
-        let doc_id = doc_type_to_doc_id(doc_type);
-
-        // Sync with server using core client
-        let result = self.core.sync_document(&doc_id, &mut doc).await?;
+        // Sync with server
+        let result = self.core.sync_document(doc_id, &mut doc).await?;
 
         // Save updated document
+        let bytes = doc.save();
         self.storage
-            .save(doc_type, &mut doc)
+            .save(doc_id, &bytes)
             .map_err(|e| SyncClientError::StorageError(e.to_string()))?;
 
-        Ok(LegacySyncResult {
-            doc_type,
+        Ok(DocSyncResult {
+            name: name.to_string(),
             updated: result.updated,
             rounds: result.rounds,
         })
     }
-}
 
-/// Result of a sync operation for a document type (legacy format).
-#[derive(Debug, Clone)]
-pub struct LegacySyncResult {
-    /// Document type that was synced
-    pub doc_type: DocType,
-    /// Whether the document was updated
-    pub updated: bool,
-    /// Number of sync round-trips
-    pub rounds: usize,
-}
-
-/// Generate a deterministic DocumentId from a DocType.
-///
-/// This is a transitional function for backward compatibility.
-/// Production code should use Identity-based document IDs.
-fn doc_type_to_doc_id(doc_type: DocType) -> todu_fit_core::DocumentId {
-    // Use fixed UUIDs for each doc type (deterministic for backward compatibility)
-    // These are arbitrary but consistent values
-    let bytes: [u8; 16] = match doc_type {
-        DocType::Dishes => [
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
-            0x0f, 0x10,
-        ],
-        DocType::MealPlans => [
-            0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e,
-            0x1f, 0x20,
-        ],
-        DocType::MealLogs => [
-            0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e,
-            0x2f, 0x30,
-        ],
-    };
-
-    todu_fit_core::DocumentId::from_bytes(bytes)
+    /// Returns the server URL.
+    #[cfg(test)]
+    pub fn server_url(&self) -> &str {
+        self.core.server_url()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_sync_client_new() {
-        let client = SyncClient::new("ws://localhost:8080".to_string());
-        assert_eq!(client.core.server_url(), "ws://localhost:8080");
-    }
+    use tempfile::TempDir;
 
     #[test]
     fn test_sync_client_from_config() {
+        let temp_dir = TempDir::new().unwrap();
         let config = SyncConfig {
-            server_url: Some("https://sync.example.com".to_string()),
+            server_url: Some("wss://sync.example.com".to_string()),
             auto_sync: false,
         };
-        let client = SyncClient::from_config(&config).unwrap();
-        assert_eq!(client.core.server_url(), "https://sync.example.com");
+        let client = SyncClient::from_config(&config, temp_dir.path().to_path_buf()).unwrap();
+        assert_eq!(client.server_url(), "wss://sync.example.com");
     }
 
     #[test]
     fn test_sync_client_not_configured() {
+        let temp_dir = TempDir::new().unwrap();
         let config = SyncConfig {
             server_url: None,
             auto_sync: false,
         };
-        let result = SyncClient::from_config(&config);
+        let result = SyncClient::from_config(&config, temp_dir.path().to_path_buf());
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
             SyncClientError::NotConfigured
         ));
-    }
-
-    #[test]
-    fn test_doc_type_to_doc_id_deterministic() {
-        let id1 = doc_type_to_doc_id(DocType::Dishes);
-        let id2 = doc_type_to_doc_id(DocType::Dishes);
-        assert_eq!(id1, id2);
-    }
-
-    #[test]
-    fn test_doc_type_to_doc_id_unique() {
-        let dishes_id = doc_type_to_doc_id(DocType::Dishes);
-        let plans_id = doc_type_to_doc_id(DocType::MealPlans);
-        let logs_id = doc_type_to_doc_id(DocType::MealLogs);
-
-        assert_ne!(dishes_id, plans_id);
-        assert_ne!(dishes_id, logs_id);
-        assert_ne!(plans_id, logs_id);
     }
 }

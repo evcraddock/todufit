@@ -29,11 +29,9 @@ pub mod mealplan_sync;
 pub mod reader;
 #[cfg(test)]
 pub mod schema;
-pub mod storage;
 pub mod writer;
 
 pub use client::{SyncClient, SyncClientError};
 pub use dish_sync::SyncDishRepository;
 pub use meallog_sync::SyncMealLogRepository;
 pub use mealplan_sync::SyncMealPlanRepository;
-pub use storage::DocType;

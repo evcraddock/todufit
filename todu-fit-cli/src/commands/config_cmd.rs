@@ -56,12 +56,21 @@ impl ConfigCommand {
                         }
                         println!();
 
-                        println!("database_path: {}", config.database_path.value.display());
-                        println!("  source: {}", config.database_path.source);
+                        println!("data_dir: {}", config.data_dir.value.display());
+                        println!("  source: {}", config.data_dir.source);
                         println!();
 
                         println!("created_by: {}", config.created_by.value);
                         println!("  source: {}", config.created_by.source);
+                        println!();
+
+                        println!("sync:");
+                        if let Some(url) = &config.sync.server_url {
+                            println!("  server_url: {}", url);
+                        } else {
+                            println!("  server_url: (not configured)");
+                        }
+                        println!("  auto_sync: {}", config.sync.auto_sync);
                     }
                 }
                 Ok(())
@@ -85,27 +94,18 @@ impl ConfigCommand {
                     fs::create_dir_all(parent)?;
                 }
 
-                // Get absolute database path
-                let db_path = std::fs::canonicalize(&config.database_path.value)
-                    .unwrap_or_else(|_| config.database_path.value.clone());
-
-                // Write config with absolute database path
+                // Write config
                 let config_content = format!(
                     r#"# fit configuration
-
-# Path to SQLite database
-database_path: {}
 
 # Default user name for new dishes
 created_by: {}
 
 # Sync configuration (uncomment and fill in to enable)
 # sync:
-#   server_url: ws://localhost:8080
-#   api_key: your-api-key-here
+#   server_url: wss://sync.example.com
 #   auto_sync: false
 "#,
-                    db_path.display(),
                     config.created_by.value
                 );
 
@@ -114,7 +114,6 @@ created_by: {}
 
                 println!("Created config file: {}", config_path.display());
                 println!("\nConfiguration:");
-                println!("  database_path: {}", db_path.display());
                 println!("  created_by: {}", config.created_by.value);
                 Ok(())
             }

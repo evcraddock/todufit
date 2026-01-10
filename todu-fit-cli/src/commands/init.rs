@@ -1,5 +1,9 @@
 //! Initialize identity for multi-user support.
 
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
+
 use clap::Args;
 
 use todu_fit_core::{DocumentId, Identity, IdentityState, MultiDocStorage};
@@ -16,13 +20,46 @@ pub struct InitCommand {
     /// Join an existing identity by document ID
     #[arg(long, conflicts_with = "new", value_name = "DOC_ID")]
     join: Option<String>,
+
+    /// Force reset - delete existing data and start fresh
+    #[arg(long, short)]
+    force: bool,
 }
 
 impl InitCommand {
-    pub fn run(&self, _config: &Config) -> Result<(), InitError> {
-        let storage = MultiDocStorage::new(Config::default_data_dir());
+    pub fn run(&self, config: &Config) -> Result<(), InitError> {
+        let data_dir = &config.data_dir.value;
+        let storage = MultiDocStorage::new(data_dir.clone());
         let identity = Identity::new(storage);
 
+        match identity.state() {
+            IdentityState::Initialized | IdentityState::PendingSync => {
+                if self.new || self.join.is_some() {
+                    // User wants to init but identity exists - offer to reset
+                    if self.force || self.confirm_reset()? {
+                        self.wipe_data(data_dir)?;
+                        // Recreate identity after wipe
+                        let storage = MultiDocStorage::new(data_dir.clone());
+                        let identity = Identity::new(storage);
+                        return self.do_init(&identity);
+                    } else {
+                        println!("Cancelled.");
+                        return Ok(());
+                    }
+                } else {
+                    // Just show status
+                    return self.show_status(&identity);
+                }
+            }
+            IdentityState::Uninitialized => {
+                // Continue with initialization
+            }
+        }
+
+        self.do_init(&identity)
+    }
+
+    fn show_status(&self, identity: &Identity) -> Result<(), InitError> {
         match identity.state() {
             IdentityState::Initialized => {
                 let root_id = identity.root_doc_id()?.unwrap();
@@ -32,7 +69,9 @@ impl InitCommand {
                 println!();
                 println!("To share this identity with another device, use:");
                 println!("  fit device show");
-                return Ok(());
+                println!();
+                println!("To start fresh, run:");
+                println!("  fit init --new --force");
             }
             IdentityState::PendingSync => {
                 let root_id = identity.root_doc_id()?.unwrap();
@@ -41,17 +80,37 @@ impl InitCommand {
                 println!("Identity ID: {}", root_id.to_bs58check());
                 println!();
                 println!("Run 'fit sync' to complete the join.");
-                return Ok(());
             }
-            IdentityState::Uninitialized => {
-                // Continue with initialization
-            }
+            IdentityState::Uninitialized => {}
         }
+        Ok(())
+    }
 
+    fn confirm_reset(&self) -> Result<bool, InitError> {
+        println!("Identity already exists.");
+        println!();
+        print!("Delete all data and start fresh? [y/N] ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        Ok(input.trim().eq_ignore_ascii_case("y"))
+    }
+
+    fn wipe_data(&self, data_dir: &Path) -> Result<(), InitError> {
+        if data_dir.exists() {
+            fs::remove_dir_all(data_dir)?;
+            println!("✓ Deleted existing data");
+        }
+        Ok(())
+    }
+
+    fn do_init(&self, identity: &Identity) -> Result<(), InitError> {
         if self.new {
-            self.create_new(&identity)
+            self.create_new(identity)
         } else if let Some(doc_id_str) = &self.join {
-            self.join_existing(&identity, doc_id_str)
+            self.join_existing(identity, doc_id_str)
         } else {
             println!("Initialize your identity:");
             println!();
@@ -108,6 +167,7 @@ impl InitCommand {
 pub enum InitError {
     IdentityError(todu_fit_core::IdentityError),
     InvalidDocId(String, String),
+    IoError(std::io::Error),
 }
 
 impl std::fmt::Display for InitError {
@@ -115,6 +175,7 @@ impl std::fmt::Display for InitError {
         match self {
             InitError::IdentityError(e) => write!(f, "{}", e),
             InitError::InvalidDocId(id, e) => write!(f, "Invalid document ID '{}': {}", id, e),
+            InitError::IoError(e) => write!(f, "I/O error: {}", e),
         }
     }
 }
@@ -124,5 +185,11 @@ impl std::error::Error for InitError {}
 impl From<todu_fit_core::IdentityError> for InitError {
     fn from(e: todu_fit_core::IdentityError) -> Self {
         InitError::IdentityError(e)
+    }
+}
+
+impl From<std::io::Error> for InitError {
+    fn from(e: std::io::Error) -> Self {
+        InitError::IoError(e)
     }
 }

@@ -2,14 +2,26 @@
 set -e
 
 echo "Running pre-commit checks..."
+echo
 
-echo "Checking formatting..."
+echo "📝 Checking formatting..."
 cargo fmt --check
+echo "   ✓ Formatting OK"
+echo
 
-echo "Running clippy..."
-cargo clippy -- -D warnings -A dead_code
+echo "🔨 Building..."
+cargo build --all-targets 2>&1 | grep -E "^error" && exit 1 || true
+echo "   ✓ Build OK"
+echo
 
-echo "Running tests..."
+echo "🔍 Running clippy (no warnings, no dead code)..."
+cargo clippy --all-targets --all-features -- -D warnings -D dead_code
+echo "   ✓ Clippy OK"
+echo
+
+echo "🧪 Running tests..."
 cargo test --quiet
+echo "   ✓ Tests OK"
+echo
 
-echo "All checks passed!"
+echo "✅ All checks passed!"

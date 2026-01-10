@@ -3,7 +3,7 @@
 use clap::{Args, Subcommand};
 
 use crate::config::Config;
-use crate::sync::{DocType, SyncClient, SyncClientError};
+use crate::sync::{SyncClient, SyncClientError};
 
 /// Sync with remote server
 #[derive(Debug, Args)]
@@ -31,39 +31,30 @@ impl SyncCommand {
     }
 
     async fn sync(&self, config: &Config) -> Result<(), SyncCommandError> {
-        let mut client = SyncClient::from_config(&config.sync)?;
+        let mut client = SyncClient::from_config(&config.sync, config.data_dir.value.clone())?;
 
         println!("Syncing with server...");
         println!();
 
-        let mut any_updated = false;
+        let result = client.sync_all().await?;
 
-        // Sync each document type
-        for doc_type in [DocType::Dishes, DocType::MealPlans, DocType::MealLogs] {
-            match client.sync_document(doc_type).await {
-                Ok(result) => {
-                    let status = if result.updated {
-                        any_updated = true;
-                        "✓ updated"
-                    } else {
-                        "✓ up to date"
-                    };
-                    println!(
-                        "  {} {} ({} round{})",
-                        status,
-                        doc_type_name(result.doc_type),
-                        result.rounds,
-                        if result.rounds == 1 { "" } else { "s" }
-                    );
-                }
-                Err(e) => {
-                    println!("  ✗ {} - {}", doc_type_name(doc_type), e);
-                }
-            }
+        for doc_result in &result.documents {
+            let status = if doc_result.updated {
+                "✓ updated"
+            } else {
+                "✓ up to date"
+            };
+            println!(
+                "  {} {} ({} round{})",
+                status,
+                doc_result.name,
+                doc_result.rounds,
+                if doc_result.rounds == 1 { "" } else { "s" }
+            );
         }
 
         println!();
-        if any_updated {
+        if result.any_updated() {
             println!("Sync complete.");
         } else {
             println!("Already up to date.");
@@ -83,7 +74,7 @@ impl SyncCommand {
             println!("To enable sync, add to your config file:");
             println!();
             println!("  sync:");
-            println!("    server_url: \"ws://localhost:8080\"");
+            println!("    server_url: \"ws://localhost:3030\"");
             println!();
             println!("Or set environment variable:");
             println!("  FIT_SYNC_URL");
@@ -106,23 +97,14 @@ impl SyncCommand {
         // Try to connect to check server status
         print!("Server status: ");
 
-        // Try WebSocket connection to verify connectivity
-        let mut client = SyncClient::from_config(&config.sync)?;
-        match client.sync_document(DocType::Dishes).await {
+        let mut client = SyncClient::from_config(&config.sync, config.data_dir.value.clone())?;
+        match client.sync_all().await {
             Ok(_) => println!("✓ connected"),
             Err(SyncClientError::SyncError(_)) => println!("✗ unreachable"),
             Err(e) => println!("✗ error: {}", e),
         }
 
         Ok(())
-    }
-}
-
-fn doc_type_name(doc_type: DocType) -> &'static str {
-    match doc_type {
-        DocType::Dishes => "dishes",
-        DocType::MealPlans => "mealplans",
-        DocType::MealLogs => "meallogs",
     }
 }
 

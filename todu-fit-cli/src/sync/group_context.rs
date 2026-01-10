@@ -6,11 +6,9 @@
 //! - Group documents
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use todu_fit_core::{DocumentId, Identity, IdentityState, MultiDocStorage};
-
-use crate::config::Config;
 
 /// Errors that can occur when resolving group context.
 #[derive(Debug)]
@@ -81,14 +79,15 @@ pub struct UserContext {
 
 /// Resolve the current group context.
 ///
-/// Uses the current group setting (from ~/.local/share/fit/current_group)
+/// Uses the current group setting (from data_dir/current_group)
 /// or falls back to the first group if none is set.
 ///
 /// Returns document IDs for the group's dishes and meal plans.
 pub fn resolve_group_context(
+    data_dir: &Path,
     group_override: Option<&str>,
 ) -> Result<GroupContext, GroupContextError> {
-    let storage = MultiDocStorage::new(Config::default_data_dir());
+    let storage = MultiDocStorage::new(data_dir.to_path_buf());
     let identity = Identity::new(storage);
 
     // Check identity state
@@ -107,7 +106,7 @@ pub fn resolve_group_context(
     // Find the target group
     let target_name = group_override
         .map(|s| s.to_string())
-        .or_else(load_current_group)
+        .or_else(|| load_current_group(data_dir))
         .unwrap_or_else(|| groups[0].name.clone());
 
     let group_ref = groups
@@ -129,8 +128,8 @@ pub fn resolve_group_context(
 /// Resolve the user context for personal documents.
 ///
 /// Returns document IDs for the user's personal meal logs.
-pub fn resolve_user_context() -> Result<UserContext, GroupContextError> {
-    let storage = MultiDocStorage::new(Config::default_data_dir());
+pub fn resolve_user_context(data_dir: &Path) -> Result<UserContext, GroupContextError> {
+    let storage = MultiDocStorage::new(data_dir.to_path_buf());
     let identity = Identity::new(storage);
 
     // Check identity state
@@ -147,21 +146,14 @@ pub fn resolve_user_context() -> Result<UserContext, GroupContextError> {
     })
 }
 
-/// Check if identity is initialized and ready to use.
-pub fn is_identity_ready() -> bool {
-    let storage = MultiDocStorage::new(Config::default_data_dir());
-    let identity = Identity::new(storage);
-    identity.state() == IdentityState::Initialized
-}
-
 // ==================== Current Group Persistence ====================
 
-fn current_group_path() -> PathBuf {
-    Config::default_data_dir().join("current_group")
+fn current_group_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("current_group")
 }
 
-fn load_current_group() -> Option<String> {
-    fs::read_to_string(current_group_path())
+fn load_current_group(data_dir: &Path) -> Option<String> {
+    fs::read_to_string(current_group_path(data_dir))
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())

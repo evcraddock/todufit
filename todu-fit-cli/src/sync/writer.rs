@@ -67,10 +67,10 @@ mod tests {
         let id = dish.id;
 
         write_dish(&mut doc, &dish);
-        assert!(doc.get(ROOT, &id.to_string()).unwrap().is_some());
+        assert!(doc.get(ROOT, id.to_string()).unwrap().is_some());
 
         delete_dish(&mut doc, id);
-        assert!(doc.get(ROOT, &id.to_string()).unwrap().is_none());
+        assert!(doc.get(ROOT, id.to_string()).unwrap().is_none());
     }
 
     #[test]

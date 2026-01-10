@@ -1,6 +1,7 @@
 /target
 hack/todufit.db
 hack/fit.db
+hack/data/
 
 # Development environment
 .env

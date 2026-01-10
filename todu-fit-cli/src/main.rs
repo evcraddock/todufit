@@ -80,13 +80,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             cmd.run(&config)?;
         }
         Some(Commands::Dish(cmd)) => {
-            let repo = SyncDishRepository::new();
+            let repo = SyncDishRepository::new(config.data_dir.value.clone());
             cmd.run(&repo, &config)?;
         }
         Some(Commands::Meal(cmd)) => {
-            let meallog_repo = SyncMealLogRepository::new();
-            let mealplan_repo = SyncMealPlanRepository::new();
-            let dish_repo = SyncDishRepository::new();
+            let data_dir = config.data_dir.value.clone();
+            let meallog_repo = SyncMealLogRepository::new(data_dir.clone());
+            let mealplan_repo = SyncMealPlanRepository::new(data_dir.clone());
+            let dish_repo = SyncDishRepository::new(data_dir);
             let repos = MealRepos {
                 meallog: &meallog_repo,
                 mealplan: &mealplan_repo,
@@ -95,8 +96,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             cmd.run(repos, &config)?;
         }
         Some(Commands::Mealplan(cmd)) => {
-            let mealplan_repo = SyncMealPlanRepository::new();
-            let dish_repo = SyncDishRepository::new();
+            let data_dir = config.data_dir.value.clone();
+            let mealplan_repo = SyncMealPlanRepository::new(data_dir.clone());
+            let dish_repo = SyncDishRepository::new(data_dir);
             cmd.run(&mealplan_repo, &dish_repo, &config)?;
         }
         Some(Commands::Config(cmd)) => {

@@ -20,14 +20,14 @@ enum DeviceSubcommand {
 }
 
 impl DeviceCommand {
-    pub fn run(&self, _config: &Config) -> Result<(), DeviceError> {
+    pub fn run(&self, config: &Config) -> Result<(), DeviceError> {
         match &self.command {
-            DeviceSubcommand::Show => self.show(),
+            DeviceSubcommand::Show => self.show(config),
         }
     }
 
-    fn show(&self) -> Result<(), DeviceError> {
-        let storage = MultiDocStorage::new(Config::default_data_dir());
+    fn show(&self, config: &Config) -> Result<(), DeviceError> {
+        let storage = MultiDocStorage::new(config.data_dir.value.clone());
         let identity = Identity::new(storage);
 
         match identity.state() {

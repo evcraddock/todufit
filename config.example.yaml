@@ -2,11 +2,18 @@
 # Default location: ~/.config/fit/config.yaml
 #
 # Environment variables override these settings:
-#   FIT_DATABASE_PATH - overrides database_path
+#   FIT_DATA_DIR - overrides data_dir
 #   FIT_CREATED_BY - overrides created_by
+#   FIT_SYNC_URL - overrides sync.server_url
 
-# Path to SQLite database (default: ~/.local/share/fit/fit.db)
-# database_path: /path/to/custom/fit.db
+# Directory for storing data (default: ~/.local/share/fit)
+# Relative paths are resolved against the config file's directory
+# data_dir: /path/to/data
 
 # Default user name for new dishes (default: "default")
 # created_by: your_username
+
+# Sync configuration
+# sync:
+#   server_url: wss://sync.example.com
+#   auto_sync: false
