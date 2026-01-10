@@ -21,6 +21,7 @@
 //! let meallogs = MealLogsDoc::new();
 //! ```
 
+pub mod auto_sync;
 pub mod client;
 pub mod dish_sync;
 pub mod group_context;
@@ -31,6 +32,7 @@ pub mod reader;
 pub mod schema;
 pub mod writer;
 
+pub use auto_sync::try_auto_sync;
 pub use client::{SyncClient, SyncClientError};
 pub use dish_sync::SyncDishRepository;
 pub use meallog_sync::SyncMealLogRepository;

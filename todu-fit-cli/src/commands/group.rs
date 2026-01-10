@@ -12,11 +12,11 @@ use crate::config::Config;
 #[derive(Args)]
 pub struct GroupCommand {
     #[command(subcommand)]
-    command: GroupSubcommand,
+    pub command: GroupSubcommand,
 }
 
 #[derive(Subcommand)]
-enum GroupSubcommand {
+pub enum GroupSubcommand {
     /// Create a new group
     Create {
         /// Name of the group

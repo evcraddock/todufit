@@ -7,11 +7,12 @@ mod models;
 mod sync;
 
 use commands::{
-    meal::MealRepos, ConfigCommand, DeviceCommand, DishCommand, GroupCommand, InitCommand,
-    MealCommand, MealPlanCommand, SyncCommand,
+    meal::MealRepos, ConfigCommand, DeviceCommand, DishCommand, DishSubcommand, GroupCommand,
+    GroupSubcommand, InitCommand, MealCommand, MealPlanCommand, MealPlanSubcommand, MealSubcommand,
+    SyncCommand,
 };
 use config::Config;
-use sync::{SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
+use sync::{try_auto_sync, SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
 
 #[derive(Parser)]
 #[command(name = "fit")]
@@ -69,19 +70,40 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Load configuration
     let config = Config::load(cli.config)?;
 
-    match cli.command {
+    // Auto-sync BEFORE read commands
+    if is_read_command(&cli.command) {
+        try_auto_sync(&config);
+    }
+
+    // Execute the command
+    let result = execute_command(&cli.command, &config, cli_config_path);
+
+    // Auto-sync AFTER write commands (only if command succeeded)
+    if result.is_ok() && is_write_command(&cli.command) {
+        try_auto_sync(&config);
+    }
+
+    result
+}
+
+fn execute_command(
+    command: &Option<Commands>,
+    config: &Config,
+    cli_config_path: Option<PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match command {
         Some(Commands::Init(cmd)) => {
-            cmd.run(&config)?;
+            cmd.run(config)?;
         }
         Some(Commands::Device(cmd)) => {
-            cmd.run(&config)?;
+            cmd.run(config)?;
         }
         Some(Commands::Group(cmd)) => {
-            cmd.run(&config)?;
+            cmd.run(config)?;
         }
         Some(Commands::Dish(cmd)) => {
             let repo = SyncDishRepository::new(config.data_dir.value.clone());
-            cmd.run(&repo, &config)?;
+            cmd.run(&repo, config)?;
         }
         Some(Commands::Meal(cmd)) => {
             let data_dir = config.data_dir.value.clone();
@@ -93,19 +115,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 mealplan: &mealplan_repo,
                 dish: &dish_repo,
             };
-            cmd.run(repos, &config)?;
+            cmd.run(repos, config)?;
         }
         Some(Commands::Mealplan(cmd)) => {
             let data_dir = config.data_dir.value.clone();
             let mealplan_repo = SyncMealPlanRepository::new(data_dir.clone());
             let dish_repo = SyncDishRepository::new(data_dir);
-            cmd.run(&mealplan_repo, &dish_repo, &config)?;
+            cmd.run(&mealplan_repo, &dish_repo, config)?;
         }
         Some(Commands::Config(cmd)) => {
-            cmd.run(&config, cli_config_path)?;
+            cmd.run(config, cli_config_path)?;
         }
         Some(Commands::Sync(cmd)) => {
-            cmd.run(&config)?;
+            cmd.run(config)?;
         }
         None => {
             println!("Use --help to see available commands");
@@ -113,4 +135,54 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+/// Returns true if the command is a read operation that should sync before execution.
+fn is_read_command(cmd: &Option<Commands>) -> bool {
+    matches!(
+        cmd,
+        Some(Commands::Dish(d)) if matches!(d.command,
+            DishSubcommand::List { .. } | DishSubcommand::Show { .. })
+    ) || matches!(
+        cmd,
+        Some(Commands::Meal(m)) if matches!(m.command,
+            MealSubcommand::History { .. })
+    ) || matches!(
+        cmd,
+        Some(Commands::Mealplan(mp)) if matches!(mp.command,
+            MealPlanSubcommand::List { .. } | MealPlanSubcommand::Show { .. })
+    ) || matches!(
+        cmd,
+        Some(Commands::Group(g)) if matches!(g.command,
+            GroupSubcommand::List | GroupSubcommand::Show)
+    )
+}
+
+/// Returns true if the command is a write operation that should sync after execution.
+fn is_write_command(cmd: &Option<Commands>) -> bool {
+    matches!(
+        cmd,
+        Some(Commands::Dish(d)) if matches!(d.command,
+            DishSubcommand::Create { .. }
+            | DishSubcommand::Update { .. }
+            | DishSubcommand::Delete { .. }
+            | DishSubcommand::AddIngredient { .. }
+            | DishSubcommand::RemoveIngredient { .. })
+    ) || matches!(
+        cmd,
+        Some(Commands::Meal(m)) if matches!(m.command,
+            MealSubcommand::Log { .. })
+    ) || matches!(
+        cmd,
+        Some(Commands::Mealplan(mp)) if matches!(mp.command,
+            MealPlanSubcommand::Create { .. }
+            | MealPlanSubcommand::Update { .. }
+            | MealPlanSubcommand::Delete { .. })
+    ) || matches!(
+        cmd,
+        Some(Commands::Group(g)) if matches!(g.command,
+            GroupSubcommand::Create { .. }
+            | GroupSubcommand::Join { .. }
+            | GroupSubcommand::Leave { .. })
+    )
 }

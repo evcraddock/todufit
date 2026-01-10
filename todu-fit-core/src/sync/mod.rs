@@ -16,6 +16,6 @@ mod client;
 mod error;
 mod protocol;
 
-pub use client::{SyncClient, SyncResult};
+pub use client::{check_server, SyncClient, SyncResult};
 pub use error::SyncError;
 pub use protocol::{generate_peer_id, ProtocolMessage};

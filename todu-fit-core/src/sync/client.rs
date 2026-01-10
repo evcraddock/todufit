@@ -19,6 +19,8 @@ use crate::document_id::DocumentId;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long to wait for any activity on a document before checking exit conditions.
 const DOC_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
+/// Short timeout for server health checks.
+const CHECK_SERVER_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Result of a sync operation for a single document.
 #[derive(Debug, Clone)]
@@ -29,6 +31,83 @@ pub struct SyncResult {
     pub updated: bool,
     /// Number of sync round-trips
     pub rounds: usize,
+}
+
+/// Check if a sync server is reachable.
+///
+/// Attempts to connect to the server and perform a handshake.
+/// Returns `true` if successful, `false` otherwise.
+/// Uses a short timeout (3 seconds) to fail fast.
+pub async fn check_server(url: &str) -> bool {
+    // Build WebSocket URL
+    let ws_url = if url.starts_with("http://") {
+        url.replace("http://", "ws://")
+    } else if url.starts_with("https://") {
+        url.replace("https://", "wss://")
+    } else if !url.starts_with("ws://") && !url.starts_with("wss://") {
+        format!("ws://{}", url)
+    } else {
+        url.to_string()
+    };
+
+    // Attempt connection with timeout
+    let result = timeout(CHECK_SERVER_TIMEOUT, async {
+        // Connect to WebSocket
+        let (ws_stream, _) = match connect_async(&ws_url).await {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+        let (mut sender, mut receiver) = ws_stream.split();
+
+        // Generate peer ID and send join message
+        let peer_id = generate_peer_id();
+        let join_msg = ProtocolMessage::Join {
+            sender_id: peer_id.clone(),
+            supported_protocol_versions: vec!["1".to_string()],
+            peer_metadata: PeerMetadata {
+                storage_id: None,
+                is_ephemeral: true,
+            },
+        };
+
+        let encoded = match join_msg.encode() {
+            Ok(e) => e,
+            Err(_) => return false,
+        };
+        if sender.send(Message::Binary(encoded.into())).await.is_err() {
+            return false;
+        }
+
+        // Wait for peer response
+        while let Some(msg_result) = receiver.next().await {
+            match msg_result {
+                Ok(Message::Binary(data)) => {
+                    if let Ok(ProtocolMessage::Peer { target_id, .. }) =
+                        ProtocolMessage::decode(&data)
+                    {
+                        if target_id == peer_id {
+                            // Send leave message
+                            let leave_msg = ProtocolMessage::Leave {
+                                sender_id: peer_id.clone(),
+                            };
+                            if let Ok(encoded) = leave_msg.encode() {
+                                let _ = sender.send(Message::Binary(encoded.into())).await;
+                            }
+                            let _ = sender.send(Message::Close(None)).await;
+                            return true;
+                        }
+                    }
+                }
+                Ok(Message::Close(_)) => break,
+                Err(_) => return false,
+                _ => {}
+            }
+        }
+        false
+    })
+    .await;
+
+    matches!(result, Ok(true))
 }
 
 /// Sync client for connecting to automerge-repo-sync-server.

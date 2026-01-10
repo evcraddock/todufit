@@ -17,7 +17,7 @@ pub use document_id::{DocumentId, DocumentIdError};
 pub use documents::{GroupDocument, GroupRef, IdentityDocument};
 pub use identity::{Identity, IdentityError, IdentityState};
 pub use models::{Dish, Ingredient, MealLog, MealPlan, MealType, Nutrient};
-pub use sync::{SyncClient, SyncError, SyncResult};
+pub use sync::{check_server, SyncClient, SyncError, SyncResult};
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
