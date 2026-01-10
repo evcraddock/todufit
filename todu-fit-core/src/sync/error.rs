@@ -33,7 +33,12 @@ impl std::fmt::Display for SyncError {
             SyncError::StorageError(e) => write!(f, "Storage error: {}", e),
             SyncError::HandshakeError(e) => write!(f, "Handshake failed: {}", e),
             SyncError::DocumentUnavailable(doc_id) => {
-                write!(f, "Document unavailable: {}", doc_id)
+                write!(
+                    f,
+                    "Document not found on server: {}. If joining an existing identity, \
+                     sync from the original device first.",
+                    doc_id
+                )
             }
             SyncError::CborError(e) => write!(f, "CBOR error: {}", e),
             SyncError::HandshakeTimeout => write!(f, "Handshake timed out"),

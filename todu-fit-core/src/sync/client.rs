@@ -406,7 +406,7 @@ impl SyncClient {
                     break;
                 }
                 Err(_) => {
-                    // No activity during idle window - assume sync complete
+                    // No activity during idle window - sync complete
                     break;
                 }
             }

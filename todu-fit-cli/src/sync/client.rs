@@ -119,11 +119,12 @@ impl SyncClient {
     pub async fn sync_all(&mut self) -> Result<SyncResult, SyncClientError> {
         let identity = Identity::new(self.storage.clone());
 
-        // Check identity state
-        match identity.state() {
+        // Check identity state and remember if we're waiting to pull from server
+        let is_pending_sync = match identity.state() {
             IdentityState::Uninitialized => return Err(SyncClientError::NotInitialized),
-            IdentityState::PendingSync | IdentityState::Initialized => {}
-        }
+            IdentityState::PendingSync => true,
+            IdentityState::Initialized => false,
+        };
 
         let mut results = Vec::new();
 
@@ -134,6 +135,29 @@ impl SyncClient {
             .ok_or(SyncClientError::NotInitialized)?;
 
         results.push(self.sync_document(&identity_doc_id, "identity").await?);
+
+        // If we were in PendingSync state (joined but waiting to pull from server),
+        // verify the identity document now has content
+        if is_pending_sync {
+            const MIN_VALID_DOC_SIZE: usize = 50;
+            if let Some(bytes) = self
+                .storage
+                .load(&identity_doc_id)
+                .map_err(|e| SyncClientError::StorageError(e.to_string()))?
+            {
+                if bytes.len() < MIN_VALID_DOC_SIZE {
+                    return Err(SyncClientError::IdentityError(
+                        "Identity document is empty after sync. \
+                         The original device may not have synced yet."
+                            .to_string(),
+                    ));
+                }
+            } else {
+                return Err(SyncClientError::IdentityError(
+                    "Identity document not found after sync.".to_string(),
+                ));
+            }
+        }
 
         // Reload identity after sync (it may have been updated)
         let identity = Identity::new(self.storage.clone());
