@@ -8,6 +8,8 @@ Local-first meal planning and nutrition tracking CLI.
 - **Meal planning** - Plan meals by date and meal type (breakfast, lunch, dinner, snack)
 - **Meal logging** - Track what you actually ate, from plans or unplanned meals
 - **Nutrition tracking** - View per-meal and daily nutrient totals (calories, protein, carbs, fat)
+- **Shopping lists** - Auto-generated ingredient lists from meal plans with check-off tracking
+- **Groups** - Share dishes and meal plans with family or household members
 - **Cross-device sync** - Sync data across devices via [todu-sync](https://github.com/evcraddock/todu-sync) server
 
 ## Installation
@@ -100,16 +102,59 @@ fit meal log --date <YYYY-MM-DD> --type <type> [--dish <name>]... [--notes <text
 fit meal history [--from <date>] [--to <date>] [--format text|json]
 ```
 
+### Shopping
+
+Generate shopping lists from your meal plans with automatic ingredient aggregation.
+
+```bash
+# List shopping items for the current week
+fit shopping list [--week <YYYY-MM-DD>] [--format table|json]
+
+# Add a manual item
+fit shopping add <name> [--qty <quantity>] [--unit <unit>] [--week <date>]
+
+# Remove a manual item
+fit shopping remove <name> [--week <date>]
+
+# Mark items as purchased
+fit shopping check <name> [--week <date>]
+fit shopping uncheck <name> [--week <date>]
+
+# Clear all checked items
+fit shopping clear-checked [--week <date>]
+```
+
+The shopping list automatically aggregates ingredients from all meal plans in the week and deduplicates by name and unit.
+
+### Identity & Groups
+
+Manage your identity and share data across devices and with others.
+
+```bash
+# Initialize identity
+fit init --new              # Create new identity
+fit init --join <doc-id>    # Join existing identity from another device
+fit init --force            # Force reset (delete existing data)
+
+# View identity for sharing
+fit device show             # Display identity document ID and groups
+
+# Manage groups for shared dishes and meal plans
+fit group create <name>     # Create a new group
+fit group join <id> [--name <name>]  # Join an existing group
+fit group list              # List all groups
+fit group show              # Show current group details
+fit group switch <name>     # Switch to a different group
+fit group leave <name>      # Leave a group
+```
+
 ### Sync
 
 Cross-device sync is provided by [todu-sync](https://github.com/evcraddock/todu-sync), a standalone Automerge sync server.
 
 ```bash
-fit auth login    # Authenticate with sync server (magic link)
-fit auth logout   # Remove API key
-fit auth status   # Show authentication status
 fit sync          # Sync all data with server
-fit sync status   # Show sync configuration
+fit sync status   # Show sync configuration and server status
 ```
 
 **Configure sync** in `~/.config/fit/config.yaml`:
@@ -119,12 +164,11 @@ sync:
   auto_sync: true  # optional: sync after every write
 ```
 
-The `api_key` is automatically saved after `fit auth login`.
-
 ### Configuration
 
 ```bash
 fit config show    # Show current config
+fit config init    # Initialize config file with defaults
 ```
 
 **Config file locations (platform-specific):**
@@ -217,7 +261,7 @@ cargo run -p todu-fit-cli -- <args>    # Run CLI with arguments
 ## Roadmap
 
 - [x] Cross-device sync via Automerge
-- [ ] Ingredient-based shopping lists
+- [x] Ingredient-based shopping lists
 - [ ] Meal plan templates
 
 ## License
