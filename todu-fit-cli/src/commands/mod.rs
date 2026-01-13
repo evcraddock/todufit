@@ -5,6 +5,7 @@ mod group;
 mod init;
 pub mod meal;
 mod mealplan;
+mod shopping;
 mod sync_cmd;
 
 pub use config_cmd::ConfigCommand;
@@ -14,4 +15,5 @@ pub use group::{GroupCommand, GroupSubcommand};
 pub use init::InitCommand;
 pub use meal::{MealCommand, MealSubcommand};
 pub use mealplan::{MealPlanCommand, MealPlanSubcommand};
+pub use shopping::{ShoppingCommand, ShoppingSubcommand};
 pub use sync_cmd::SyncCommand;

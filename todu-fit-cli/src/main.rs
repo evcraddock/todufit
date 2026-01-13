@@ -9,10 +9,13 @@ mod sync;
 use commands::{
     meal::MealRepos, ConfigCommand, DeviceCommand, DishCommand, DishSubcommand, GroupCommand,
     GroupSubcommand, InitCommand, MealCommand, MealPlanCommand, MealPlanSubcommand, MealSubcommand,
-    SyncCommand,
+    ShoppingCommand, ShoppingSubcommand, SyncCommand,
 };
 use config::Config;
-use sync::{try_auto_sync, SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository};
+use sync::{
+    try_auto_sync, SyncDishRepository, SyncMealLogRepository, SyncMealPlanRepository,
+    SyncShoppingRepository,
+};
 
 #[derive(Parser)]
 #[command(name = "fit")]
@@ -46,6 +49,9 @@ enum Commands {
 
     /// Manage meal plans
     Mealplan(MealPlanCommand),
+
+    /// Manage shopping carts
+    Shopping(ShoppingCommand),
 
     /// Manage configuration
     Config(ConfigCommand),
@@ -123,6 +129,13 @@ fn execute_command(
             let dish_repo = SyncDishRepository::new(data_dir);
             cmd.run(&mealplan_repo, &dish_repo, config)?;
         }
+        Some(Commands::Shopping(cmd)) => {
+            let data_dir = config.data_dir.value.clone();
+            let shopping_repo = SyncShoppingRepository::new(data_dir.clone());
+            let mealplan_repo = SyncMealPlanRepository::new(data_dir.clone());
+            let dish_repo = SyncDishRepository::new(data_dir);
+            cmd.run(&shopping_repo, &mealplan_repo, &dish_repo, config)?;
+        }
         Some(Commands::Config(cmd)) => {
             cmd.run(config, cli_config_path)?;
         }
@@ -155,6 +168,10 @@ fn is_read_command(cmd: &Option<Commands>) -> bool {
         cmd,
         Some(Commands::Group(g)) if matches!(g.command,
             GroupSubcommand::List | GroupSubcommand::Show)
+    ) || matches!(
+        cmd,
+        Some(Commands::Shopping(s)) if matches!(s.command,
+            ShoppingSubcommand::List { .. })
     )
 }
 
@@ -184,5 +201,13 @@ fn is_write_command(cmd: &Option<Commands>) -> bool {
             GroupSubcommand::Create { .. }
             | GroupSubcommand::Join { .. }
             | GroupSubcommand::Leave { .. })
+    ) || matches!(
+        cmd,
+        Some(Commands::Shopping(s)) if matches!(s.command,
+            ShoppingSubcommand::Add { .. }
+            | ShoppingSubcommand::Remove { .. }
+            | ShoppingSubcommand::Check { .. }
+            | ShoppingSubcommand::Uncheck { .. }
+            | ShoppingSubcommand::ClearChecked { .. })
     )
 }

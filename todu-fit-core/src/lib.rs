@@ -10,13 +10,16 @@ pub mod models;
 pub mod sync;
 
 pub use automerge::{
-    delete_dish, delete_meallog, delete_mealplan, write_dish, write_meallog, write_mealplan,
-    DocType, DocumentStorage, MultiDocStorage, MultiStorageError, StorageError,
+    delete_dish, delete_meallog, delete_mealplan, delete_shopping_cart, write_dish, write_meallog,
+    write_mealplan, write_shopping_cart, DocType, DocumentStorage, MultiDocStorage,
+    MultiStorageError, StorageError,
 };
 pub use document_id::{DocumentId, DocumentIdError};
 pub use documents::{GroupDocument, GroupRef, IdentityDocument};
 pub use identity::{Identity, IdentityError, IdentityState};
-pub use models::{Dish, Ingredient, MealLog, MealPlan, MealType, Nutrient};
+pub use models::{
+    Dish, Ingredient, ManualItem, MealLog, MealPlan, MealType, Nutrient, ShoppingCart, ShoppingItem,
+};
 pub use sync::{check_server, SyncClient, SyncError, SyncResult};
 
 pub fn version() -> &'static str {

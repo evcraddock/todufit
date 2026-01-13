@@ -5,7 +5,7 @@
 use automerge::{transaction::Transactable, AutoCommit, ObjType, ROOT};
 use uuid::Uuid;
 
-use crate::models::{Dish, MealLog, MealPlan};
+use crate::models::{Dish, MealLog, MealPlan, ShoppingCart};
 
 /// Writes a dish to an Automerge document.
 ///
@@ -222,6 +222,46 @@ pub fn delete_meallog(doc: &mut AutoCommit, id: Uuid) {
     let _ = doc.delete(ROOT, &id_str);
 }
 
+/// Writes a shopping cart to an Automerge document.
+///
+/// The shopping cart is stored at root[week_date_string].
+/// Each week has its own entry keyed by the Sunday date (YYYY-MM-DD).
+pub fn write_shopping_cart(doc: &mut AutoCommit, cart: &ShoppingCart) {
+    let week_key = &cart.week;
+
+    let cart_id = doc
+        .put_object(ROOT, week_key, ObjType::Map)
+        .expect("Failed to create shopping cart object");
+
+    // Write checked items list
+    let checked_id = doc.put_object(&cart_id, "checked", ObjType::List).unwrap();
+    for (i, item_name) in cart.checked.iter().enumerate() {
+        doc.insert(&checked_id, i, item_name.as_str()).unwrap();
+    }
+
+    // Write manual items list
+    let manual_items_id = doc
+        .put_object(&cart_id, "manual_items", ObjType::List)
+        .unwrap();
+    for (i, item) in cart.manual_items.iter().enumerate() {
+        let item_id = doc
+            .insert_object(&manual_items_id, i, ObjType::Map)
+            .unwrap();
+        doc.put(&item_id, "name", item.name.as_str()).unwrap();
+        if let Some(ref qty) = item.quantity {
+            doc.put(&item_id, "quantity", qty.as_str()).unwrap();
+        }
+        if let Some(ref unit) = item.unit {
+            doc.put(&item_id, "unit", unit.as_str()).unwrap();
+        }
+    }
+}
+
+/// Deletes a shopping cart for a specific week from an Automerge document.
+pub fn delete_shopping_cart(doc: &mut AutoCommit, week: &str) {
+    let _ = doc.delete(ROOT, week);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,5 +364,43 @@ mod tests {
         let (_, log_obj) = doc.get(ROOT, &id_str).unwrap().unwrap();
         let (val, _) = doc.get(&log_obj, "mealplan_id").unwrap().unwrap();
         assert_eq!(val.into_string().unwrap(), mealplan_id.to_string());
+    }
+
+    #[test]
+    fn test_write_shopping_cart() {
+        use crate::models::ManualItem;
+
+        let mut doc = AutoCommit::new();
+        let mut cart = ShoppingCart::new("2026-01-11");
+        cart.check("eggs");
+        cart.check("milk");
+        cart.add_manual_item(ManualItem::with_quantity("Paper towels", "2", "rolls"));
+
+        write_shopping_cart(&mut doc, &cart);
+
+        // Verify cart exists
+        assert!(doc.get(ROOT, "2026-01-11").unwrap().is_some());
+
+        let (_, cart_obj) = doc.get(ROOT, "2026-01-11").unwrap().unwrap();
+
+        // Verify checked items
+        let (_, checked_obj) = doc.get(&cart_obj, "checked").unwrap().unwrap();
+        assert_eq!(doc.length(&checked_obj), 2);
+
+        // Verify manual items
+        let (_, manual_obj) = doc.get(&cart_obj, "manual_items").unwrap().unwrap();
+        assert_eq!(doc.length(&manual_obj), 1);
+    }
+
+    #[test]
+    fn test_delete_shopping_cart() {
+        let mut doc = AutoCommit::new();
+        let cart = ShoppingCart::new("2026-01-11");
+
+        write_shopping_cart(&mut doc, &cart);
+        assert!(doc.get(ROOT, "2026-01-11").unwrap().is_some());
+
+        delete_shopping_cart(&mut doc, "2026-01-11");
+        assert!(doc.get(ROOT, "2026-01-11").unwrap().is_none());
     }
 }

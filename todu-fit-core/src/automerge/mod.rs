@@ -25,5 +25,6 @@ pub use doc_type::DocType;
 pub use multi_storage::{MultiDocStorage, MultiStorageError};
 pub use storage::{DocumentStorage, StorageError};
 pub use writer::{
-    delete_dish, delete_meallog, delete_mealplan, write_dish, write_meallog, write_mealplan,
+    delete_dish, delete_meallog, delete_mealplan, delete_shopping_cart, write_dish, write_meallog,
+    write_mealplan, write_shopping_cart,
 };

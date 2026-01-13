@@ -68,6 +68,8 @@ pub struct GroupContext {
     pub dishes_doc_id: DocumentId,
     /// Meal plans document ID
     pub mealplans_doc_id: DocumentId,
+    /// Shopping carts document ID
+    pub shopping_carts_doc_id: DocumentId,
 }
 
 /// Resolved user context containing personal document IDs.
@@ -122,6 +124,7 @@ pub fn resolve_group_context(
     Ok(GroupContext {
         dishes_doc_id: group_doc.dishes_doc_id,
         mealplans_doc_id: group_doc.mealplans_doc_id,
+        shopping_carts_doc_id: group_doc.shopping_carts_doc_id,
     })
 }
 

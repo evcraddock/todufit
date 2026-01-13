@@ -30,7 +30,7 @@ impl GroupRef {
 /// Shared group document.
 ///
 /// Contains group metadata and references to shared documents
-/// (dishes and meal plans).
+/// (dishes, meal plans, and shopping carts).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupDocument {
     /// Schema version for migration support
@@ -44,11 +44,15 @@ pub struct GroupDocument {
 
     /// Reference to shared meal plans document
     pub mealplans_doc_id: DocumentId,
+
+    /// Reference to shared shopping carts document
+    #[serde(default = "DocumentId::new")]
+    pub shopping_carts_doc_id: DocumentId,
 }
 
 impl GroupDocument {
     /// Current schema version
-    pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+    pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
     /// Create a new group document with generated document IDs.
     pub fn new(name: impl Into<String>) -> Self {
@@ -57,6 +61,7 @@ impl GroupDocument {
             name: name.into(),
             dishes_doc_id: DocumentId::new(),
             mealplans_doc_id: DocumentId::new(),
+            shopping_carts_doc_id: DocumentId::new(),
         }
     }
 
@@ -71,6 +76,7 @@ impl GroupDocument {
             name: name.into(),
             dishes_doc_id,
             mealplans_doc_id,
+            shopping_carts_doc_id: DocumentId::new(),
         }
     }
 
@@ -109,6 +115,8 @@ mod tests {
 
         assert_eq!(group.dishes_doc_id, dishes_id);
         assert_eq!(group.mealplans_doc_id, mealplans_id);
+        // shopping_carts_doc_id is auto-generated
+        assert!(!group.shopping_carts_doc_id.to_string().is_empty());
     }
 
     #[test]
@@ -141,5 +149,32 @@ mod tests {
         assert_eq!(parsed.name, group.name);
         assert_eq!(parsed.dishes_doc_id, group.dishes_doc_id);
         assert_eq!(parsed.mealplans_doc_id, group.mealplans_doc_id);
+        assert_eq!(parsed.shopping_carts_doc_id, group.shopping_carts_doc_id);
+    }
+
+    #[test]
+    fn test_group_document_migration_from_v1() {
+        // Create valid document IDs for the test
+        let dishes_id = DocumentId::new();
+        let mealplans_id = DocumentId::new();
+
+        // Simulate a v1 document without shopping_carts_doc_id
+        let json = format!(
+            r#"{{
+                "schema_version": 1,
+                "name": "OldFamily",
+                "dishes_doc_id": "{}",
+                "mealplans_doc_id": "{}"
+            }}"#,
+            dishes_id, mealplans_id
+        );
+
+        let parsed: GroupDocument = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.name, "OldFamily");
+        assert_eq!(parsed.dishes_doc_id, dishes_id);
+        assert_eq!(parsed.mealplans_doc_id, mealplans_id);
+        // shopping_carts_doc_id should be auto-generated via serde default
+        assert!(!parsed.shopping_carts_doc_id.to_string().is_empty());
     }
 }
