@@ -165,7 +165,7 @@ fn read_ingredients(doc: &AutoCommit, obj_id: &ObjId) -> Result<Vec<Ingredient>,
                 .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
             {
                 let name = get_string(doc, &ing_id, "name")?.unwrap_or_default();
-                let quantity = get_f64(doc, &ing_id, "quantity")?.unwrap_or(0.0);
+                let quantity = get_quantity(doc, &ing_id, "quantity")?.unwrap_or(0.0);
                 let unit = get_string(doc, &ing_id, "unit")?.unwrap_or_default();
 
                 ingredients.push(Ingredient::new(name, quantity, unit));
@@ -509,7 +509,45 @@ fn get_f64(doc: &AutoCommit, obj_id: &ObjId, key: &str) -> Result<Option<f64>, R
         .get(obj_id, key)
         .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
     {
-        Ok(value.to_f64())
+        // Try f64 first, then fall back to i64 (for values stored as integers)
+        if let Some(f) = value.to_f64() {
+            Ok(Some(f))
+        } else if let Some(i) = value.to_i64() {
+            Ok(Some(i as f64))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+/// Gets a quantity value, handling both scalar numbers and Text objects.
+/// The UI stores quantities as Text CRDTs, while the CLI writes them as f64.
+fn get_quantity(doc: &AutoCommit, obj_id: &ObjId, key: &str) -> Result<Option<f64>, ReaderError> {
+    if let Some((value, obj_id_value)) = doc
+        .get(obj_id, key)
+        .map_err(|e| ReaderError::AutomergeError(e.to_string()))?
+    {
+        // Try f64 first (CLI writes this format)
+        if let Some(f) = value.to_f64() {
+            return Ok(Some(f));
+        }
+        // Try i64 (integers stored numerically)
+        if let Some(i) = value.to_i64() {
+            return Ok(Some(i as f64));
+        }
+        // Check if it's a Text object (UI writes this format)
+        if value.is_object() {
+            // Read the text content and parse as number
+            let text = doc
+                .text(&obj_id_value)
+                .map_err(|e| ReaderError::AutomergeError(format!("Failed to read text: {}", e)))?;
+            if let Ok(f) = text.parse::<f64>() {
+                return Ok(Some(f));
+            }
+        }
+        Ok(None)
     } else {
         Ok(None)
     }
