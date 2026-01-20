@@ -111,7 +111,13 @@ impl Identity {
             .map_err(IdentityError::StorageError)?;
 
         // Create empty meallogs document
+        // We put and delete a key to ensure at least one change is recorded,
+        // otherwise useDocument returns null for truly empty docs
         let mut meallogs_doc = AutoCommit::new();
+        meallogs_doc
+            .put(automerge::ROOT, "_", true)
+            .map_err(|e| IdentityError::AutomergeError(e.to_string()))?;
+        meallogs_doc.delete(automerge::ROOT, "_").ok();
         let meallogs_bytes = meallogs_doc.save();
         self.storage
             .save(&identity_doc.meallogs_doc_id, &meallogs_bytes)
@@ -208,14 +214,26 @@ impl Identity {
             .map_err(IdentityError::StorageError)?;
 
         // Create empty dishes document
+        // We put and delete a key to ensure at least one change is recorded,
+        // otherwise useDocument returns null for truly empty docs
         let mut dishes_doc = AutoCommit::new();
+        dishes_doc
+            .put(automerge::ROOT, "_", true)
+            .map_err(|e| IdentityError::AutomergeError(e.to_string()))?;
+        dishes_doc.delete(automerge::ROOT, "_").ok();
         let dishes_bytes = dishes_doc.save();
         self.storage
             .save(&group_doc.dishes_doc_id, &dishes_bytes)
             .map_err(IdentityError::StorageError)?;
 
         // Create empty mealplans document
+        // We put and delete a key to ensure at least one change is recorded,
+        // otherwise useDocument returns null for truly empty docs
         let mut mealplans_doc = AutoCommit::new();
+        mealplans_doc
+            .put(automerge::ROOT, "_", true)
+            .map_err(|e| IdentityError::AutomergeError(e.to_string()))?;
+        mealplans_doc.delete(automerge::ROOT, "_").ok();
         let mealplans_bytes = mealplans_doc.save();
         self.storage
             .save(&group_doc.mealplans_doc_id, &mealplans_bytes)

@@ -315,15 +315,7 @@ fn read_mealplan(
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(Utc::now);
 
-    // UI stores as "dishes", CLI writes as "dish_ids" - try both
-    let dish_ids = {
-        let ids = read_dish_ids(doc, obj_id, "dishes")?;
-        if ids.is_empty() {
-            read_dish_ids(doc, obj_id, "dish_ids")?
-        } else {
-            ids
-        }
-    };
+    let dish_ids = read_dish_ids(doc, obj_id, "dish_ids")?;
 
     Ok(Some(MealPlan {
         id,

@@ -1,18 +1,51 @@
 # Todu Fit
 
-Local-first meal planning and nutrition tracking CLI.
+Local-first meal planning and nutrition tracking with cross-device sync.
 
 ## Features
 
-- **Dish management** - Create and organize recipes with ingredients, instructions, and nutrition info
-- **Meal planning** - Plan meals by date and meal type (breakfast, lunch, dinner, snack)
-- **Meal logging** - Track what you actually ate, from plans or unplanned meals
-- **Nutrition tracking** - View per-meal and daily nutrient totals (calories, protein, carbs, fat)
-- **Shopping lists** - Auto-generated ingredient lists from meal plans with check-off tracking
-- **Groups** - Share dishes and meal plans with family or household members
-- **Cross-device sync** - Sync data across devices via [todu-sync](https://github.com/evcraddock/todu-sync) server
+- **Dishes** - Create and manage recipes with ingredients and nutritional info
+- **Meal Plans** - Plan meals by date and type (breakfast, lunch, dinner, snack)
+- **Meal Logging** - Track what you ate with nutrition totals
+- **Shopping Lists** - Auto-generated from meal plans with check-off tracking
+- **Groups** - Share dishes and meal plans with family or household
+- **Offline-first** - Works without internet, syncs when connected
+- **Cross-device** - CLI and web app share the same data
 
-## Installation
+## Components
+
+| Component | Description |
+|-----------|-------------|
+| **todu-fit-cli** | Command-line interface (`fit` binary) |
+| **todu-fit-web** | React web application |
+| **todu-fit-core** | Shared Rust library (models, sync) |
+| **[todu-sync](https://github.com/evcraddock/todu-sync)** | Automerge sync server (separate repo) |
+
+## How It Works
+
+```
+┌─────────────┐     ┌─────────────┐
+│   fit CLI   │     │   Web App   │
+│  (Rust)     │     │  (React)    │
+└──────┬──────┘     └──────┬──────┘
+       │                   │
+       │  Automerge CRDT   │
+       │                   │
+       └─────────┬─────────┘
+                 │ WebSocket
+                 ▼
+          ┌─────────────┐
+          │  todu-sync  │
+          │   server    │
+          └─────────────┘
+```
+
+- **Automerge** CRDTs store all data locally
+- Changes sync via WebSocket when online
+- Works offline - edits merge automatically when reconnected
+- CLI and web share the same identity to see the same data
+
+## CLI Installation
 
 ### Quick Install (Linux/macOS)
 
@@ -22,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/evcraddock/todu-fit/main/install.sh
 
 ### Download Binary
 
-Pre-built binaries are available on the [releases page](https://github.com/evcraddock/todu-fit/releases):
+Pre-built binaries on the [releases page](https://github.com/evcraddock/todu-fit/releases):
 - Linux x86_64
 - macOS x86_64 (Intel)
 - macOS aarch64 (Apple Silicon)
@@ -36,233 +69,150 @@ cd todu-fit
 cargo install --path todu-fit-cli
 ```
 
-## Quick Start
+## CLI Quick Start
 
 ```bash
-# Create a dish with nutrition info
+# Initialize identity
+fit init --new
+
+# Create a group (required for dishes)
+fit group create "Home"
+
+# Create a dish
 fit dish create "Grilled Salmon" \
   --servings 2 \
   --nutrients '{"calories": 450, "protein": 40, "carbs": 5, "fat": 28}'
 
 # Plan a meal
-fit mealplan create --date 2025-01-01 --type dinner --title "New Year Dinner" --dish "Grilled Salmon"
+fit mealplan create --date 2025-01-15 --type dinner --dish "Grilled Salmon"
 
-# Log a meal from a plan
+# Log what you ate
 fit meal log <plan-id>
 
-# Or log an unplanned meal
-fit meal log --date 2025-01-01 --type lunch --dish "Grilled Salmon" --notes "Quick lunch"
-
-# View meal history with nutrition totals
+# View history with nutrition totals
 fit meal history
+
+# Sync to server
+fit sync
 ```
 
-## Commands
-
-### Dishes
+## CLI Commands
 
 ```bash
-fit dish create <name> [options]    # Create a dish
-fit dish list                       # List all dishes
-fit dish show <name|id>             # Show dish details
-fit dish update <name|id> [options] # Update a dish
-fit dish delete <name|id>           # Delete a dish
-fit dish add-ingredient <name|id> --name <ing> --quantity <n> --unit <u>
-fit dish remove-ingredient <name|id> --name <ing>
+fit init [--new|--join <id>]     # Initialize identity
+fit group create|list|switch     # Manage groups
+fit dish create|list|show|update|delete
+fit mealplan create|list|show|update|delete
+fit meal log|history
+fit shopping list|add|check
+fit sync                         # Sync with server
+fit config show                  # Show configuration
 ```
 
-**Nutrients** are passed as JSON:
-```bash
---nutrients '{"calories": 650, "protein": 25, "carbs": 80, "fat": 28}'
-```
-Units: kcal for calories, grams for everything else.
+Run `fit <command> --help` for details.
 
-### Meal Plans
+## Configuration
 
-```bash
-fit mealplan create --date <YYYY-MM-DD> --type <type> [--title] [--dish <name>]...
-fit mealplan list [--from <date>] [--to <date>]
-fit mealplan show <id|date> [--type <type>]
-fit mealplan update <id> [options]
-fit mealplan delete <id>
-fit mealplan add-dish <plan-id> <dish>
-fit mealplan remove-dish <plan-id> <dish>
-```
-
-### Meal Logging
-
-```bash
-# Log from an existing plan
-fit meal log <plan-id> [--notes <text>]
-
-# Log an unplanned meal
-fit meal log --date <YYYY-MM-DD> --type <type> [--dish <name>]... [--notes <text>]
-
-# View history (default: last 7 days)
-fit meal history [--from <date>] [--to <date>] [--format text|json]
-```
-
-### Shopping
-
-Generate shopping lists from your meal plans with automatic ingredient aggregation.
-
-```bash
-# List shopping items for the current week
-fit shopping list [--week <YYYY-MM-DD>] [--format table|json]
-
-# Add a manual item
-fit shopping add <name> [--qty <quantity>] [--unit <unit>] [--week <date>]
-
-# Remove a manual item
-fit shopping remove <name> [--week <date>]
-
-# Mark items as purchased
-fit shopping check <name> [--week <date>]
-fit shopping uncheck <name> [--week <date>]
-
-# Clear all checked items
-fit shopping clear-checked [--week <date>]
-```
-
-The shopping list automatically aggregates ingredients from all meal plans in the week and deduplicates by name and unit.
-
-### Identity & Groups
-
-Manage your identity and share data across devices and with others.
-
-```bash
-# Initialize identity
-fit init --new              # Create new identity
-fit init --join <doc-id>    # Join existing identity from another device
-fit init --force            # Force reset (delete existing data)
-
-# View identity for sharing
-fit device show             # Display identity document ID and groups
-
-# Manage groups for shared dishes and meal plans
-fit group create <name>     # Create a new group
-fit group join <id> [--name <name>]  # Join an existing group
-fit group list              # List all groups
-fit group show              # Show current group details
-fit group switch <name>     # Switch to a different group
-fit group leave <name>      # Leave a group
-```
-
-### Sync
-
-Cross-device sync is provided by [todu-sync](https://github.com/evcraddock/todu-sync), a standalone Automerge sync server.
-
-```bash
-fit sync          # Sync all data with server
-fit sync status   # Show sync configuration and server status
-```
-
-**Configure sync** in `~/.config/fit/config.yaml`:
-```yaml
-sync:
-  server_url: "ws://your-sync-server:8080"
-  auto_sync: true  # optional: sync after every write
-```
-
-### Configuration
-
-```bash
-fit config show    # Show current config
-fit config init    # Initialize config file with defaults
-```
-
-**Config file locations (platform-specific):**
+Config file location:
 - Linux: `~/.config/fit/config.yaml`
 - macOS: `~/Library/Application Support/fit/config.yaml`
 - Windows: `%APPDATA%\fit\config.yaml`
 
-**Data directory (database):**
-- Linux: `~/.local/share/fit/`
-- macOS: `~/Library/Application Support/fit/`
-- Windows: `%APPDATA%\fit\`
-
 ```yaml
-# config.yaml
-database_path: /custom/path/fit.db  # optional, overrides default
+data_dir: ~/.local/share/fit    # Where Automerge data is stored
 created_by: your-name
+
+sync:
+  server_url: "wss://your-sync-server.com"
+  auto_sync: true               # Sync after every write
 ```
 
-## Example Workflow
+## Web App
 
-```bash
-# Set up some dishes
-fit dish create "Overnight Oats" --servings 1 \
-  --nutrients '{"calories": 350, "protein": 12, "carbs": 55, "fat": 10}'
+The web app provides the same features with a browser UI. See [web/README.md](web/README.md) for details.
 
-fit dish create "Chicken Salad" --servings 1 \
-  --nutrients '{"calories": 400, "protein": 35, "carbs": 15, "fat": 22}'
+To connect CLI and web:
+1. Initialize CLI: `fit init --new && fit group create "Home"`
+2. Get identity: `fit device show` (copy the ID)
+3. In web app Settings → Sync Settings → enter the ID
 
-# Plan tomorrow's meals
-fit mealplan create --date 2025-01-02 --type breakfast --dish "Overnight Oats"
-fit mealplan create --date 2025-01-02 --type lunch --dish "Chicken Salad"
-
-# Next day: log what you ate
-fit meal log <breakfast-plan-id>
-fit meal log <lunch-plan-id> --notes "Added extra dressing"
-
-# Check your nutrition
-fit meal history --from 2025-01-02 --to 2025-01-02
-```
-
-Output:
-```
-2025-01-02
-------------------------------------------------------------
-  breakfast (planned): Overnight Oats
-             Calories: 350 | Protein: 12g | Carbs: 55g | Fat: 10g
-  lunch (planned): Chicken Salad
-             Calories: 400 | Protein: 35g | Carbs: 15g | Fat: 22g
-             Notes: Added extra dressing
-  --------------------------------------------------------
-  Daily Total: Calories: 750 | Protein: 47g | Carbs: 70g | Fat: 32g
-
-Total: 2 meal(s)
-```
+Both will now share the same data.
 
 ## Development
 
+### Prerequisites
+
+- **Rust** (latest stable) - CLI
+- **Node.js** (v20+) - Web app
+- **Docker** - Sync server
+- **Overmind** - Process manager ([install](https://github.com/DarthSim/overmind#installation))
+- **tmux** - Required by Overmind
+
+### Services
+
+Development runs three services via Overmind:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| **vite** | 5173 | React dev server with HMR |
+| **hono** | 3000 | Auth API server |
+| **sync** | 8080 | Automerge sync server (Docker) |
+
+### Quick Start
+
 ```bash
-cargo build                            # Build debug binary
-cargo test                             # Run tests
-cargo fmt                              # Format code
-cargo clippy                           # Run linter
-cargo run -p todu-fit-cli -- <args>    # Run CLI with arguments
+# Install web dependencies
+make web-install
+
+# Start all services (runs in background)
+make dev
+
+# Check status
+make status
+
+# View web app
+open http://localhost:5173
+
+# Stop services
+make stop
 ```
 
-## Architecture
+### Environments
 
-```
-┌─────────────────────────────────────────────┐
-│                fit CLI                       │
-│                                             │
-│  ┌─────────────┐      ┌─────────────────┐  │
-│  │  Automerge  │─────▶│     SQLite      │  │
-│  │   (sync)    │      │   (queries)     │  │
-│  └─────────────┘      └─────────────────┘  │
-│         │                                   │
-└─────────│───────────────────────────────────┘
-          │ WebSocket sync
-          ▼
-   ┌─────────────┐
-   │  todu-sync  │  (separate deployment)
-   │   server    │
-   └─────────────┘
+| Environment | Command | Data | Purpose |
+|-------------|---------|------|---------|
+| **dev** | `make dev` | `data/dev/` | Persistent development data |
+| **test** | `make test` | `data/test/` | Clean slate (wiped on start) |
+
+### Viewing Logs
+
+Services run in tmux panes:
+
+```bash
+make logs           # Stream all logs (Ctrl+C to stop)
+make connect-hono   # Attach to hono pane
+make connect-vite   # Attach to vite pane
+make connect-sync   # Attach to sync pane
 ```
 
-- **Automerge** is the source of truth for sync (CRDT)
-- **SQLite** is a local projection for fast queries
-- **todu-sync** is a standalone sync server (see [todu-sync](https://github.com/evcraddock/todu-sync))
+In tmux: scroll with `Ctrl+b [`, exit scroll with `q`, detach with `Ctrl+b d`.
 
-## Roadmap
+### CLI Development
 
-- [x] Cross-device sync via Automerge
-- [x] Ingredient-based shopping lists
-- [ ] Meal plan templates
+```bash
+make build                    # Build release binary
+make fit ARGS="dish list"     # Run CLI command
+make fit-config               # Show CLI config
+cargo run -p todu-fit-cli -- -c config.dev.yaml dish list  # Or via cargo
+```
+
+### All Commands
+
+```bash
+make help    # Show all available commands
+```
+
+See [AGENTS.md](AGENTS.md) for detailed development workflows.
 
 ## License
 

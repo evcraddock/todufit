@@ -1,0 +1,12 @@
+# CLI test configuration
+# Usage: fit -c config.test.yaml <command>
+
+# Store CLI data in data/test/cli (wiped before each test run)
+data_dir: ./data/test/cli
+
+created_by: test
+
+# Use local sync server
+sync:
+  server_url: ws://localhost:8080
+  auto_sync: true
