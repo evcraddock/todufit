@@ -195,8 +195,8 @@ export function RepoProvider({ children }: { children: ReactNode }) {
       if (pendingInviteGroupDocId && pendingInviteGroupName && pendingInviteGroupRefId) {
         console.log('[repo] Creating new identity with invited group')
 
-        // Create only private documents - meal logs
-        const meallogsHandle = createDoc<{ mealLogs: unknown[] }>(repo, { mealLogs: [] })
+        // Create only private documents - meal logs (empty object, CLI uses flat root-level structure)
+        const meallogsHandle = createDoc<Record<string, unknown>>(repo, {})
         const meallogsDocId = getDocIdFromUrl(meallogsHandle.url)
 
         // Create the identity document with reference to the invited group
@@ -295,9 +295,10 @@ export function RepoProvider({ children }: { children: ReactNode }) {
         console.log('[repo] Creating new identity documents')
 
         // Create new documents using repo.create() which generates URLs automatically
-        const dishesHandle = createDoc<{ dishes: unknown[] }>(repo, { dishes: [] })
-        const mealplansHandle = createDoc<{ mealPlans: unknown[] }>(repo, { mealPlans: [] })
-        const meallogsHandle = createDoc<{ mealLogs: unknown[] }>(repo, { mealLogs: [] })
+        // Use empty objects - CLI uses flat root-level structure (e.g., { "uuid": {...} })
+        const dishesHandle = createDoc<Record<string, unknown>>(repo, {})
+        const mealplansHandle = createDoc<Record<string, unknown>>(repo, {})
+        const meallogsHandle = createDoc<Record<string, unknown>>(repo, {})
         const shoppingcartsHandle = createDoc<Record<string, unknown>>(repo, {})
 
         // Get the generated doc IDs from the URLs
