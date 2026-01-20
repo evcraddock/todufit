@@ -140,17 +140,79 @@ Both will now share the same data.
 
 ## Development
 
-See [AGENTS.md](AGENTS.md) for development setup, including:
-- Running the monorepo locally with Overmind
-- CLI development workflow
-- Testing sync between CLI and web
+### Prerequisites
+
+- **Rust** (latest stable) - CLI
+- **Node.js** (v20+) - Web app
+- **Docker** - Sync server
+- **Overmind** - Process manager ([install](https://github.com/DarthSim/overmind#installation))
+- **tmux** - Required by Overmind
+
+### Services
+
+Development runs three services via Overmind:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| **vite** | 5173 | React dev server with HMR |
+| **hono** | 3000 | Auth API server |
+| **sync** | 8080 | Automerge sync server (Docker) |
+
+### Quick Start
 
 ```bash
-make dev      # Start all services
-make status   # Check service status
-make build    # Build CLI
-make help     # Show all commands
+# Install web dependencies
+make web-install
+
+# Start all services (runs in background)
+make dev
+
+# Check status
+make status
+
+# View web app
+open http://localhost:5173
+
+# Stop services
+make stop
 ```
+
+### Environments
+
+| Environment | Command | Data | Purpose |
+|-------------|---------|------|---------|
+| **dev** | `make dev` | `data/dev/` | Persistent development data |
+| **test** | `make test` | `data/test/` | Clean slate (wiped on start) |
+
+### Viewing Logs
+
+Services run in tmux panes:
+
+```bash
+make logs           # Stream all logs (Ctrl+C to stop)
+make connect-hono   # Attach to hono pane
+make connect-vite   # Attach to vite pane
+make connect-sync   # Attach to sync pane
+```
+
+In tmux: scroll with `Ctrl+b [`, exit scroll with `q`, detach with `Ctrl+b d`.
+
+### CLI Development
+
+```bash
+make build                    # Build release binary
+make fit ARGS="dish list"     # Run CLI command
+make fit-config               # Show CLI config
+cargo run -p todu-fit-cli -- -c config.dev.yaml dish list  # Or via cargo
+```
+
+### All Commands
+
+```bash
+make help    # Show all available commands
+```
+
+See [AGENTS.md](AGENTS.md) for detailed development workflows.
 
 ## License
 

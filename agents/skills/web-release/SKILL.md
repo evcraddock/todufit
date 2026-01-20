@@ -1,18 +1,19 @@
 ---
-name: release
-description: Create a new CLI release tag based on conventional commits. Use when user says "release", "create release", "bump version", "new version", "cli release" or similar.
+name: web-release
+description: Create a new web release tag based on conventional commits. Use when user says "web release", "release web", "release the web", "new web version", "deploy web", or similar.
 ---
 
-# CLI Release
+# Web Release
 
-Create a new CLI release tag (`cli-v*`) based on conventional commits since the last release.
+Create a new web release tag (`web-v*`) based on conventional commits affecting `web/` since the last release.
 
-**Note:** This is for CLI releases only. Web releases use `web-v*` tags and are handled separately.
+**Note:** This is for web releases only. CLI releases use `cli-v*` tags and the `cli-release` skill.
 
 ## Instructions
 
-1. **Check for unpushed commits on main**:
+1. **Verify on main branch with no unpushed commits**:
    - First, verify you're on main branch: `git branch --show-current`
+   - If NOT on main, **STOP** and inform the user: "Releases must be created from the main branch. Please switch to main first."
    - Fetch the latest from origin: `git fetch origin main`
    - Check for unpushed commits: `git log origin/main..HEAD --oneline`
    - If there are any unpushed commits, **STOP** and inform the user:
@@ -20,13 +21,13 @@ Create a new CLI release tag (`cli-v*`) based on conventional commits since the 
      - List the unpushed commits so they can see what needs to be addressed
      - Do NOT proceed with the release
 
-2. **Get the current CLI release tag**:
-   - Run `git tag --list 'cli-v*' --sort=-v:refname | head -1` to get the latest CLI tag
-   - If no CLI tags exist, assume starting from cli-v0.0.0
+2. **Get the current web release tag**:
+   - Run `git tag --list 'web-v*' --sort=-v:refname | head -1` to get the latest web tag
+   - If no web tags exist, assume starting from web-v0.0.0
 
-3. **Get changes since the last tag**:
-   - Run `git log <latest-tag>..HEAD --oneline` to see all commits
-   - If there are no commits since the last tag, inform the user and stop
+3. **Get changes to `web/` since the last tag**:
+   - Run `git log <latest-tag>..HEAD --oneline -- web/` to see commits affecting web/
+   - If there are no commits affecting web/ since the last tag, inform the user and stop
 
 4. **Analyze commits to determine version bump**:
    Using semantic versioning (MAJOR.MINOR.PATCH):
@@ -46,16 +47,18 @@ Create a new CLI release tag (`cli-v*`) based on conventional commits since the 
 
    Priority: MAJOR > MINOR > PATCH
 
+   If no version-bumping commits are found (only chore:, docs:, etc.), default to PATCH.
+
 5. **Calculate the new version**:
-   - Parse the current version, for example cli-v1.2.3 becomes major=1, minor=2, patch=3
+   - Parse the current version, for example web-v1.2.3 becomes major=1, minor=2, patch=3
    - Apply the appropriate bump:
      - MAJOR: increment major, reset minor and patch to 0
      - MINOR: increment minor, reset patch to 0
      - PATCH: increment patch only
 
-6. **Update Cargo.toml version**:
-   - Before creating the tag, update the version in Cargo.toml to match
-   - Commit the version bump: `git commit -am "chore: bump version to <new-version>"`
+6. **Update web/package.json version**:
+   - Before creating the tag, update the "version" field in web/package.json to match (without the 'web-v' prefix)
+   - Commit the version bump: `git commit -am "chore(web): bump version to <new-version>"`
 
 7. **Present findings to the user**:
    Show:
@@ -65,8 +68,8 @@ Create a new CLI release tag (`cli-v*`) based on conventional commits since the 
    - Ask if they want to proceed with the suggested version, a different bump level, or cancel
 
    Options should be:
-   - The recommended version, such as cli-v1.2.0 - Minor release (Recommended)
-   - Alternative versions if applicable, such as cli-v2.0.0 - Major release or cli-v1.1.1 - Patch release
+   - The recommended version, such as web-v1.2.0 - Minor release (Recommended)
+   - Alternative versions if applicable, such as web-v2.0.0 - Major release or web-v1.1.1 - Patch release
    - Cancel - Do not create a release
 
 8. **Create the tag** (if user approves):
@@ -77,12 +80,13 @@ Create a new CLI release tag (`cli-v*`) based on conventional commits since the 
    - Run `git push origin main` to push the version bump commit
    - Run `git push origin <new-version>` to push the tag
    - Confirm success to the user
-   - Note: Pushing the tag will trigger the release workflow
+   - Note: Pushing the tag will trigger the web-deploy workflow, which builds and pushes the Docker image to DockerHub
 
 ## Important Notes
 
 - NEVER force push or use `--force` flags
 - Always use annotated tags (`-a` flag) for releases
-- The tag message should be "Release {version}" where {version} is the new version number
+- The tag message should be "Release {version}" where {version} is the new version number (e.g., "Release web-v1.2.0")
 - If anything goes wrong, explain the error and do not proceed
-- The Cargo.toml version should match the git tag (without the 'v' prefix)
+- The web/package.json version should match the git tag (without the 'web-v' prefix, e.g., tag web-v1.2.0 → package.json "1.2.0")
+- Only commits affecting `web/` are considered for the changelog and version bump
