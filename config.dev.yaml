@@ -1,0 +1,12 @@
+# CLI development configuration
+# Usage: fit -c config.dev.yaml <command>
+
+# Store CLI data in data/dev/cli
+data_dir: ./data/dev/cli
+
+created_by: dev
+
+# Use local sync server
+sync:
+  server_url: ws://localhost:8080
+  auto_sync: true

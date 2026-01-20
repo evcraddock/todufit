@@ -1,14 +1,18 @@
+# Build artifacts
 /target
-hack/todufit.db
-hack/fit.db
-hack/data/
 
 # Development environment
 .env
-.shoreman.pid
-dev.log
-dev-prev.log
+.overmind.sock
 
-# Server data and config (contains API keys)
+# Data directories
 /data/
+
+# Server config (may contain secrets)
 /config/server.yaml
+
+# Web build artifacts (also in web/.gitignore)
+/web/node_modules/
+/web/dist/
+/web/dist-server/
+/web/*.sqlite*

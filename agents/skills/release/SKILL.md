@@ -1,11 +1,13 @@
 ---
 name: release
-description: Create a new release tag based on conventional commits. Use when user says "release", "create release", "bump version", "new version", or similar.
+description: Create a new CLI release tag based on conventional commits. Use when user says "release", "create release", "bump version", "new version", "cli release" or similar.
 ---
 
-# Release Version
+# CLI Release
 
-Create a new release tag based on conventional commits since the last release.
+Create a new CLI release tag (`cli-v*`) based on conventional commits since the last release.
+
+**Note:** This is for CLI releases only. Web releases use `web-v*` tags and are handled separately.
 
 ## Instructions
 
@@ -18,9 +20,9 @@ Create a new release tag based on conventional commits since the last release.
      - List the unpushed commits so they can see what needs to be addressed
      - Do NOT proceed with the release
 
-2. **Get the current release tag**:
-   - Run `git tag --list --sort=-v:refname | head -1` to get the latest tag
-   - If no tags exist, assume starting from v0.0.0
+2. **Get the current CLI release tag**:
+   - Run `git tag --list 'cli-v*' --sort=-v:refname | head -1` to get the latest CLI tag
+   - If no CLI tags exist, assume starting from cli-v0.0.0
 
 3. **Get changes since the last tag**:
    - Run `git log <latest-tag>..HEAD --oneline` to see all commits
@@ -45,7 +47,7 @@ Create a new release tag based on conventional commits since the last release.
    Priority: MAJOR > MINOR > PATCH
 
 5. **Calculate the new version**:
-   - Parse the current version, for example v1.2.3 becomes major=1, minor=2, patch=3
+   - Parse the current version, for example cli-v1.2.3 becomes major=1, minor=2, patch=3
    - Apply the appropriate bump:
      - MAJOR: increment major, reset minor and patch to 0
      - MINOR: increment minor, reset patch to 0
@@ -63,8 +65,8 @@ Create a new release tag based on conventional commits since the last release.
    - Ask if they want to proceed with the suggested version, a different bump level, or cancel
 
    Options should be:
-   - The recommended version, such as v1.2.0 - Minor release (Recommended)
-   - Alternative versions if applicable, such as v2.0.0 - Major release or v1.1.1 - Patch release
+   - The recommended version, such as cli-v1.2.0 - Minor release (Recommended)
+   - Alternative versions if applicable, such as cli-v2.0.0 - Major release or cli-v1.1.1 - Patch release
    - Cancel - Do not create a release
 
 8. **Create the tag** (if user approves):

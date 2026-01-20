@@ -1,5 +1,0 @@
-data_dir: data
-created_by: dev
-sync:
-  server_url: ws://localhost:3030
-  auto_sync: true
