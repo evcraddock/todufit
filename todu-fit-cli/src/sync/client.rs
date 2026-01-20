@@ -203,6 +203,13 @@ impl SyncClient {
                         self.sync_document(&group_doc.mealplans_doc_id, &mealplans_name)
                             .await?,
                     );
+
+                    // Sync shopping carts
+                    let shopping_name = format!("{}:shopping", group_ref.name);
+                    results.push(
+                        self.sync_document(&group_doc.shopping_carts_doc_id, &shopping_name)
+                            .await?,
+                    );
                 }
                 Err(_) => {
                     // Group document not synced yet, will get it next time

@@ -39,7 +39,7 @@ interface GroupDocData {
   name: string
   dishes_doc_id: string
   mealplans_doc_id: string
-  shoppingcarts_doc_id?: string  // Optional for backwards compatibility
+  shopping_carts_doc_id?: string  // Optional for backwards compatibility
 }
 
 // GroupDoc is used when creating new documents from the web app
@@ -259,15 +259,15 @@ export function RepoProvider({ children }: { children: ReactNode }) {
 
         // Handle shopping carts - create if doesn't exist
         let shoppingCartsUrl: AutomergeUrl
-        if (groupData.shoppingcarts_doc_id) {
-          shoppingCartsUrl = `automerge:${groupData.shoppingcarts_doc_id}` as AutomergeUrl
+        if (groupData.shopping_carts_doc_id) {
+          shoppingCartsUrl = `automerge:${groupData.shopping_carts_doc_id}` as AutomergeUrl
         } else {
           const shoppingcartsHandle = createDoc<Record<string, unknown>>(repo, {})
           shoppingCartsUrl = shoppingcartsHandle.url
           const shoppingcartsDocId = getDocIdFromUrl(shoppingCartsUrl)
           groupHandle.change((d) => {
             const data = d.data as GroupDocData
-            data.shoppingcarts_doc_id = shoppingcartsDocId
+            data.shopping_carts_doc_id = shoppingcartsDocId
           })
         }
 
@@ -313,7 +313,7 @@ export function RepoProvider({ children }: { children: ReactNode }) {
             name: pendingGroupName,
             dishes_doc_id: dishesDocId,
             mealplans_doc_id: mealplansDocId,
-            shoppingcarts_doc_id: shoppingcartsDocId,
+            shopping_carts_doc_id: shoppingcartsDocId,
           },
         })
         const groupDocId = getDocIdFromUrl(groupHandle.url)
@@ -552,9 +552,9 @@ export function RepoProvider({ children }: { children: ReactNode }) {
 
       // Shopping carts doc - create if doesn't exist (backwards compatibility)
       let shoppingCartsUrl: AutomergeUrl
-      if (groupData.shoppingcarts_doc_id) {
+      if (groupData.shopping_carts_doc_id) {
         // Try to find the existing document
-        const existingUrl = `automerge:${groupData.shoppingcarts_doc_id}` as AutomergeUrl
+        const existingUrl = `automerge:${groupData.shopping_carts_doc_id}` as AutomergeUrl
         try {
           const handle = await repo.find(existingUrl)
           // Wait briefly for the document to load
@@ -573,7 +573,7 @@ export function RepoProvider({ children }: { children: ReactNode }) {
           // Update the group document with the new shopping carts doc ID
           groupHandle.change((d) => {
             const data = d.data as GroupDocData
-            data.shoppingcarts_doc_id = shoppingcartsDocId
+            data.shopping_carts_doc_id = shoppingcartsDocId
           })
         }
       } else {
@@ -585,7 +585,7 @@ export function RepoProvider({ children }: { children: ReactNode }) {
         // Update the group document with the new shopping carts doc ID
         groupHandle.change((d) => {
           const data = d.data as GroupDocData
-          data.shoppingcarts_doc_id = shoppingcartsDocId
+          data.shopping_carts_doc_id = shoppingcartsDocId
         })
       }
 
@@ -608,7 +608,7 @@ export function RepoProvider({ children }: { children: ReactNode }) {
             repo.find(dishesUrl),
             repo.find(mealPlansUrl),
             repo.find(mealLogsUrl),
-            groupData.shoppingcarts_doc_id ? repo.find(shoppingCartsUrl) : Promise.resolve(null),
+            groupData.shopping_carts_doc_id ? repo.find(shoppingCartsUrl) : Promise.resolve(null),
           ]),
           docTimeout,
         ])
