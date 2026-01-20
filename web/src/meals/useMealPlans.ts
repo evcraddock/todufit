@@ -33,7 +33,7 @@ function convertCliMealPlan(id: string, cliPlan: CliMealPlan): MealPlan {
     mealType: getString(cliPlan.meal_type) as MealType,
     title: getString(cliPlan.title),
     cook: getString(cliPlan.cook),
-    dishIds: (cliPlan.dishes ?? []).map((d) => getString(d)),
+    dishIds: (cliPlan.dish_ids ?? []).map((d) => getString(d)),
     createdAt: getString(cliPlan.created_at),
     updatedAt: getString(cliPlan.updated_at),
   }
@@ -116,7 +116,7 @@ export function useMealPlans() {
         meal_type: imm(plan.mealType),
         title: imm(plan.title),
         cook: imm(plan.cook),
-        dishes: plan.dishIds.map((id) => imm(id)),
+        dish_ids: plan.dishIds.map((id) => imm(id)),
         created_at: imm(plan.createdAt),
         updated_at: imm(plan.updatedAt),
       } as unknown as CliMealPlan
@@ -133,7 +133,7 @@ export function useMealPlans() {
         if (updates.title !== undefined) d[id].title = imm(updates.title) as unknown as string
         if (updates.cook !== undefined) d[id].cook = imm(updates.cook) as unknown as string
         if (updates.dishIds !== undefined)
-          d[id].dishes = updates.dishIds.map((did) => imm(did)) as unknown as string[]
+          d[id].dish_ids = updates.dishIds.map((did) => imm(did)) as unknown as string[]
         d[id].updated_at = imm(new Date().toISOString()) as unknown as string
       }
     })
@@ -149,9 +149,9 @@ export function useMealPlans() {
   const addDishToPlan = (planId: string, dishId: string) => {
     changeDoc((d) => {
       // Check if dish already exists (comparing ImmutableString values)
-      const exists = d[planId]?.dishes.some((id) => getString(id) === dishId)
+      const exists = d[planId]?.dish_ids.some((id) => getString(id) === dishId)
       if (d[planId] && !exists) {
-        d[planId].dishes.push(imm(dishId) as unknown as string)
+        d[planId].dish_ids.push(imm(dishId) as unknown as string)
         d[planId].updated_at = imm(new Date().toISOString()) as unknown as string
       }
     })
@@ -161,7 +161,7 @@ export function useMealPlans() {
   const removeDishFromPlan = (planId: string, dishId: string) => {
     changeDoc((d) => {
       if (d[planId]) {
-        d[planId].dishes = d[planId].dishes.filter((id) => getString(id) !== dishId)
+        d[planId].dish_ids = d[planId].dish_ids.filter((id) => getString(id) !== dishId)
         d[planId].updated_at = imm(new Date().toISOString()) as unknown as string
       }
     })

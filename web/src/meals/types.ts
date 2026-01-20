@@ -18,7 +18,7 @@ export interface CliMealPlan {
   meal_type: MealType
   title: string
   cook: string
-  dishes: string[] // dish UUIDs
+  dish_ids: string[] // dish UUIDs
   created_by?: string
   created_at: string
   updated_at: string
