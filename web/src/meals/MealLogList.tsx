@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useRepoState, RepoLoading } from '../repo'
 import { useMealLogs } from './useMealLogs'
 import { useDishes } from '../dishes/useDishes'
 import { MEAL_TYPES, MEAL_TYPE_COLORS, MEAL_TYPE_LABELS, MealType, MealLog } from './types'
+import { ConfirmDialog } from '../components'
 
 // Date utilities
 function parseDate(dateStr: string): Date {
@@ -42,6 +43,7 @@ function MealLogListContent() {
   const { date } = useParams<{ date: string }>()
   const { getLogsForDate, getDailySummary, getLogNutrition, deleteMealLog, isLoading: logsLoading } = useMealLogs()
   const { getDish, isLoading: dishesLoading } = useDishes()
+  const [deleteLogId, setDeleteLogId] = useState<string | null>(null)
 
   const isLoading = logsLoading || dishesLoading
 
@@ -80,8 +82,13 @@ function MealLogListContent() {
   })
 
   const handleDelete = (logId: string) => {
-    if (confirm('Delete this meal log?')) {
-      deleteMealLog(logId)
+    setDeleteLogId(logId)
+  }
+
+  const confirmDelete = () => {
+    if (deleteLogId) {
+      deleteMealLog(deleteLogId)
+      setDeleteLogId(null)
     }
   }
 
@@ -262,6 +269,14 @@ function MealLogListContent() {
           )
         })}
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteLogId !== null}
+        title="Delete Meal Log"
+        message="Are you sure you want to delete this meal log?"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteLogId(null)}
+      />
     </div>
   )
 }

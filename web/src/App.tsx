@@ -6,6 +6,7 @@ import { ThemeProvider, useTheme } from './theme'
 import { deletePasskey, setRootDocId, sendGroupInvite } from './auth/api'
 import { DishList, DishDetail, DishForm } from './dishes'
 import { MealCalendar, DayView, MealPlanForm, MealLogList, MealLogForm } from './meals'
+import { ConfirmDialog } from './components'
 
 function App() {
   return (
@@ -345,6 +346,9 @@ function Settings() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [isSendingInvite, setIsSendingInvite] = useState(false)
 
+  // Passkey delete state
+  const [deletePasskeyTarget, setDeletePasskeyTarget] = useState<{ id: string; name: string | null } | null>(null)
+
   const passkeys = auth?.passkeys || []
 
   // Get sync URL from environment or compute it
@@ -378,19 +382,21 @@ function Settings() {
     await refreshAuth()
   }
 
-  const handleDeletePasskey = async (passkeyId: string, passkeyName: string | null) => {
-    const confirmMessage = passkeyName
-      ? `Delete passkey "${passkeyName}"?`
-      : 'Delete this passkey?'
+  const handleDeletePasskey = (passkeyId: string, passkeyName: string | null) => {
+    setDeletePasskeyTarget({ id: passkeyId, name: passkeyName })
+  }
 
-    if (!confirm(confirmMessage)) return
+  const confirmDeletePasskey = async () => {
+    if (!deletePasskeyTarget) return
 
     try {
-      await deletePasskey(passkeyId)
+      await deletePasskey(deletePasskeyTarget.id)
       setMessage({ type: 'success', text: 'Passkey deleted successfully!' })
       await refreshAuth()
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to delete passkey' })
+    } finally {
+      setDeletePasskeyTarget(null)
     }
   }
 
@@ -673,6 +679,16 @@ function Settings() {
           onError={(error) => setMessage({ type: 'error', text: error })}
         />
       </div>
+
+      <ConfirmDialog
+        isOpen={deletePasskeyTarget !== null}
+        title="Delete Passkey"
+        message={deletePasskeyTarget?.name
+          ? `Delete passkey "${deletePasskeyTarget.name}"?`
+          : 'Delete this passkey?'}
+        onConfirm={confirmDeletePasskey}
+        onCancel={() => setDeletePasskeyTarget(null)}
+      />
     </div>
   )
 }

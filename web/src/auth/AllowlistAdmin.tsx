@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import { getAllowlist, addToAllowlist, removeFromAllowlist, AllowedEmail } from './api'
+import { ConfirmDialog } from '../components'
 
 export function AllowlistAdmin() {
   const { auth, isLoading: authLoading } = useAuth()
@@ -12,6 +13,7 @@ export function AllowlistAdmin() {
   const [newEmail, setNewEmail] = useState('')
   const [isAdding, setIsAdding] = useState(false)
   const [deletingEmail, setDeletingEmail] = useState<string | null>(null)
+  const [removeEmailTarget, setRemoveEmailTarget] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // Redirect non-admin users
@@ -74,15 +76,19 @@ export function AllowlistAdmin() {
     }
   }
 
-  const handleRemoveEmail = async (email: string) => {
-    const confirmed = window.confirm(`Remove ${email} from the allowlist?\n\nThis user will no longer be able to log in.`)
-    if (!confirmed) return
+  const handleRemoveEmail = (email: string) => {
+    setRemoveEmailTarget(email)
+  }
+
+  const confirmRemoveEmail = async () => {
+    if (!removeEmailTarget) return
 
     try {
-      setDeletingEmail(email)
+      setDeletingEmail(removeEmailTarget)
+      setRemoveEmailTarget(null)
       setMessage(null)
-      await removeFromAllowlist(email)
-      setMessage({ type: 'success', text: `${email} removed from allowlist` })
+      await removeFromAllowlist(removeEmailTarget)
+      setMessage({ type: 'success', text: `${removeEmailTarget} removed from allowlist` })
       await loadAllowlist()
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to remove email' })
@@ -253,6 +259,15 @@ export function AllowlistAdmin() {
       <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
         Only users with email addresses in this list (or the admin email from environment) can log in to the application.
       </p>
+
+      <ConfirmDialog
+        isOpen={removeEmailTarget !== null}
+        title="Remove from Allowlist"
+        message={`Remove ${removeEmailTarget} from the allowlist?\n\nThis user will no longer be able to log in.`}
+        confirmLabel="Remove"
+        onConfirm={confirmRemoveEmail}
+        onCancel={() => setRemoveEmailTarget(null)}
+      />
     </div>
   )
 }

@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useRepoState, RepoLoading } from '../repo'
 import { useMealPlans } from './useMealPlans'
 import { useDishes } from '../dishes/useDishes'
 import { MEAL_TYPES, MEAL_TYPE_COLORS, MEAL_TYPE_LABELS, MealType, MealPlan } from './types'
+import { ConfirmDialog } from '../components'
 
 // Date utilities
 function parseDate(dateStr: string): Date {
@@ -38,6 +39,7 @@ function DayViewContent() {
   const { date } = useParams<{ date: string }>()
   const { getPlansForDate, deleteMealPlan, isLoading: plansLoading } = useMealPlans()
   const { getDish, isLoading: dishesLoading } = useDishes()
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
 
   const isLoading = plansLoading || dishesLoading
 
@@ -77,8 +79,13 @@ function DayViewContent() {
   })
 
   const handleDelete = (planId: string, planTitle: string) => {
-    if (confirm(`Delete "${planTitle}"?`)) {
-      deleteMealPlan(planId)
+    setDeleteTarget({ id: planId, title: planTitle })
+  }
+
+  const confirmDelete = () => {
+    if (deleteTarget) {
+      deleteMealPlan(deleteTarget.id)
+      setDeleteTarget(null)
     }
   }
 
@@ -227,6 +234,14 @@ function DayViewContent() {
           )
         })}
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="Delete Meal Plan"
+        message={`Delete "${deleteTarget?.title}"?`}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

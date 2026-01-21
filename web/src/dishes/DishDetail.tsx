@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useRepoState, RepoLoading } from '../repo'
 import { useDishes } from './useDishes'
+import { ConfirmDialog } from '../components'
 
 export function DishDetail() {
   const { isReady } = useRepoState()
@@ -18,17 +19,21 @@ function DishDetailContent() {
   const navigate = useNavigate()
   const { getDish, deleteDish, isLoading } = useDishes()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const dish = id ? getDish(id) : undefined
 
   const handleDelete = () => {
     if (!id || !dish) return
-    
-    if (confirm(`Are you sure you want to delete "${dish.name}"?`)) {
-      setIsDeleting(true)
-      deleteDish(id)
-      navigate('/dishes')
-    }
+    setShowDeleteDialog(true)
+  }
+
+  const confirmDelete = () => {
+    if (!id) return
+    setIsDeleting(true)
+    setShowDeleteDialog(false)
+    deleteDish(id)
+    navigate('/dishes')
   }
 
   if (isLoading) {
@@ -58,12 +63,12 @@ function DishDetailContent() {
     <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-8 transition-colors">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-        <Link
-          to="/dishes"
+        <button
+          onClick={() => navigate(-1)}
           className="text-blue-600 dark:text-blue-400 hover:underline py-2"
         >
-          ← Back to dishes
-        </Link>
+          ← Back
+        </button>
         <div className="flex gap-2 w-full sm:w-auto">
           <Link
             to={`/dishes/${id}/edit`}
@@ -144,6 +149,14 @@ function DishDetailContent() {
           </div>
         </section>
       )}
+
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        title="Delete Dish"
+        message={`Are you sure you want to delete "${dish.name}"?`}
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteDialog(false)}
+      />
     </div>
   )
 }
