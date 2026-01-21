@@ -36,6 +36,12 @@ function DishFormContent() {
   const [tags, setTags] = useState('')
   const [ingredients, setIngredients] = useState<IngredientInput[]>([])
   const [instructions, setInstructions] = useState('')
+  
+  // Nutrient state
+  const [calories, setCalories] = useState('')
+  const [protein, setProtein] = useState('')
+  const [carbs, setCarbs] = useState('')
+  const [fat, setFat] = useState('')
 
   // Load existing dish data - only when id changes or loading completes
   // Using id as dependency instead of existingDish to avoid infinite loops
@@ -55,6 +61,14 @@ function DishFormContent() {
         }))
       )
       setInstructions(existingDish.instructions)
+      
+      // Load nutrients
+      const findNutrient = (name: string) => 
+        existingDish.nutrients.find(n => n.name.toLowerCase() === name)?.amount?.toString() ?? ''
+      setCalories(findNutrient('calories'))
+      setProtein(findNutrient('protein'))
+      setCarbs(findNutrient('carbs'))
+      setFat(findNutrient('fat'))
     }
   }, [id, isLoading])
 
@@ -101,6 +115,21 @@ function DishFormContent() {
         name: ing.name.trim(),
       }))
 
+    // Build nutrients array (only include non-empty values)
+    const parsedNutrients: { name: string; amount: number; unit: string }[] = []
+    if (calories.trim()) {
+      parsedNutrients.push({ name: 'calories', amount: parseFloat(calories), unit: 'kcal' })
+    }
+    if (protein.trim()) {
+      parsedNutrients.push({ name: 'protein', amount: parseFloat(protein), unit: 'g' })
+    }
+    if (carbs.trim()) {
+      parsedNutrients.push({ name: 'carbs', amount: parseFloat(carbs), unit: 'g' })
+    }
+    if (fat.trim()) {
+      parsedNutrients.push({ name: 'fat', amount: parseFloat(fat), unit: 'g' })
+    }
+
     if (isEdit && id) {
       // Update existing dish
       updateDish(id, {
@@ -110,6 +139,7 @@ function DishFormContent() {
         servings: servings ? parseInt(servings, 10) : undefined,
         tags: parsedTags,
         ingredients: parsedIngredients,
+        nutrients: parsedNutrients,
         instructions: instructions.trim(),
       })
       navigate(`/dishes/${id}`)
@@ -123,7 +153,7 @@ function DishFormContent() {
         servings: servings ? parseInt(servings, 10) : undefined,
         tags: parsedTags,
         ingredients: parsedIngredients,
-        nutrients: [],
+        nutrients: parsedNutrients,
         instructions: instructions.trim(),
         createdAt: now,
         updatedAt: now,
@@ -234,6 +264,73 @@ function DishFormContent() {
             className="w-full px-4 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
           />
         </div>
+
+        {/* Nutrition */}
+        <fieldset className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
+          <legend className="text-sm font-medium px-2 text-gray-700 dark:text-gray-300">Nutrition (per serving)</legend>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div>
+              <label htmlFor="calories" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                Calories
+              </label>
+              <input
+                type="number"
+                id="calories"
+                value={calories}
+                onChange={(e) => setCalories(e.target.value)}
+                min="0"
+                step="any"
+                placeholder="kcal"
+                className="w-full px-4 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label htmlFor="protein" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                Protein (g)
+              </label>
+              <input
+                type="number"
+                id="protein"
+                value={protein}
+                onChange={(e) => setProtein(e.target.value)}
+                min="0"
+                step="any"
+                placeholder="grams"
+                className="w-full px-4 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label htmlFor="carbs" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                Carbs (g)
+              </label>
+              <input
+                type="number"
+                id="carbs"
+                value={carbs}
+                onChange={(e) => setCarbs(e.target.value)}
+                min="0"
+                step="any"
+                placeholder="grams"
+                className="w-full px-4 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label htmlFor="fat" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                Fat (g)
+              </label>
+              <input
+                type="number"
+                id="fat"
+                value={fat}
+                onChange={(e) => setFat(e.target.value)}
+                min="0"
+                step="any"
+                placeholder="grams"
+                className="w-full px-4 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+          </div>
+        </fieldset>
 
         {/* Ingredients */}
         <fieldset className="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
