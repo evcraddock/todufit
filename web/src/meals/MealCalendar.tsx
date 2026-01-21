@@ -387,13 +387,22 @@ function WeeklyMealsTab({ weekPlans, getDish }: WeeklyMealsTabProps) {
                     {plans.map((plan) => (
                       <div key={plan.id}>
                         {plan.dishIds.length > 0 ? (
-                          <ul className="text-sm text-gray-700 dark:text-gray-300">
+                          <ul className="text-sm">
                             {plan.dishIds.map((dishId) => {
                               const dish = getDish(dishId)
                               return (
                                 <li key={dishId} className="flex items-center gap-1">
                                   <span className="text-gray-400">•</span>
-                                  {dish?.name || 'Unknown dish'}
+                                  {dish ? (
+                                    <Link
+                                      to={`/dishes/${dishId}`}
+                                      className="text-blue-600 dark:text-blue-400 hover:underline"
+                                    >
+                                      {dish.name}
+                                    </Link>
+                                  ) : (
+                                    <span className="text-gray-400 italic">Unknown dish</span>
+                                  )}
                                 </li>
                               )
                             })}
