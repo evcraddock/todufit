@@ -1,6 +1,7 @@
 use chrono::{Local, NaiveDate};
 use clap::{Args, Subcommand, ValueEnum};
 use std::collections::HashMap;
+use std::io::{self, Write};
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -65,6 +66,16 @@ pub enum MealSubcommand {
         #[arg(long)]
         to: Option<String>,
     },
+
+    /// Delete a meal log
+    Delete {
+        /// Meal log ID (UUID)
+        id: String,
+
+        /// Skip confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }
 
 impl MealCommand {
@@ -93,6 +104,7 @@ impl MealCommand {
             MealSubcommand::History { format, from, to } => {
                 self.show_history(format, from, to, &repos)
             }
+            MealSubcommand::Delete { id, yes } => self.delete_log(id, *yes, &repos),
         }
     }
 
@@ -288,6 +300,59 @@ impl MealCommand {
             }
         }
 
+        Ok(())
+    }
+
+    fn delete_log(
+        &self,
+        id: &str,
+        skip_confirm: bool,
+        repos: &MealRepos<'_>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Parse UUID
+        let log_uuid = Uuid::parse_str(id).map_err(|_| format!("Invalid meal log UUID: {}", id))?;
+
+        // Find the meal log
+        let log = repos
+            .meallog
+            .get_by_id(log_uuid)?
+            .ok_or_else(|| format!("Meal log not found: {}", id))?;
+
+        // Build description for confirmation
+        let dishes_str = if log.dishes.is_empty() {
+            String::new()
+        } else {
+            let names: Vec<&str> = log.dishes.iter().map(|d| d.name.as_str()).collect();
+            format!(" ({})", names.join(", "))
+        };
+        let log_desc = format!(
+            "{} {} {}{}",
+            log.date,
+            log.meal_type,
+            if log.mealplan_id.is_some() {
+                "planned"
+            } else {
+                "unplanned"
+            },
+            dishes_str
+        );
+
+        // Confirm deletion unless -y is used
+        if !skip_confirm {
+            print!("Delete meal log '{}'? [y/N] ", log_desc);
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+
+            if !input.trim().eq_ignore_ascii_case("y") {
+                println!("Deletion cancelled.");
+                return Ok(());
+            }
+        }
+
+        repos.meallog.delete(log_uuid)?;
+        println!("Deleted meal log: {}", log_desc);
         Ok(())
     }
 }
