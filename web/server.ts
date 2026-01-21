@@ -6,6 +6,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { authRoutes } from './server/routes/auth'
 import { passkeyRoutes } from './server/routes/passkey'
+import { calendarRoutes } from './server/routes/calendar'
 
 // Read version from package.json at startup
 const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8'))
@@ -28,6 +29,9 @@ app.get('/health', (c) => {
 app.route('/auth', authRoutes)
 app.route('/auth/passkey', passkeyRoutes)
 
+// Mount calendar routes
+app.route('/api/calendar', calendarRoutes)
+
 // Serve static files from dist/
 app.use('/*', serveStatic({ root: './dist' }))
 
@@ -44,6 +48,7 @@ console.log(`[hono] TODU_ENV=${process.env.TODU_ENV || 'unknown'}`)
 console.log(`[hono] Server running on http://localhost:${port}`)
 console.log(`[hono] Auth endpoints: /auth/*`)
 console.log(`[hono] Passkey endpoints: /auth/passkey/*`)
+console.log(`[hono] Calendar endpoints: /api/calendar/*`)
 
 if (process.env.NODE_ENV !== 'production') {
   const adminEmail = process.env.ADMIN_EMAIL || 'you@example.com'

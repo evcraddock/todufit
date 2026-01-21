@@ -77,6 +77,18 @@ export const groupInvites = sqliteTable('group_invites', {
   acceptedByUserId: text('accepted_by_user_id').references(() => users.id),
 })
 
+// Group calendar tokens table
+export const groupCalendarTokens = sqliteTable('group_calendar_tokens', {
+  id: text('id').primaryKey(),
+  groupDocId: text('group_doc_id').notNull(),
+  token: text('token').notNull().unique(),
+  createdByUserId: text('created_by_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+})
+
 // Type exports for use in application code
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
@@ -98,3 +110,6 @@ export type NewUserSettings = typeof userSettings.$inferInsert
 
 export type GroupInvite = typeof groupInvites.$inferSelect
 export type NewGroupInvite = typeof groupInvites.$inferInsert
+
+export type GroupCalendarToken = typeof groupCalendarTokens.$inferSelect
+export type NewGroupCalendarToken = typeof groupCalendarTokens.$inferInsert

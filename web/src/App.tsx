@@ -7,6 +7,7 @@ import { deletePasskey, setRootDocId, sendGroupInvite } from './auth/api'
 import { DishList, DishDetail, DishForm } from './dishes'
 import { MealCalendar, DayView, MealPlanForm, MealLogList, MealLogForm } from './meals'
 import { ConfirmDialog } from './components'
+import { CalendarSubscription } from './calendar'
 
 function App() {
   return (
@@ -626,6 +627,23 @@ function Settings() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Calendar Subscription */}
+      {groups.length > 0 && currentGroupName && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 transition-colors">
+          <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-gray-100">Calendar</h3>
+          {(() => {
+            const currentGroup = groups.find(g => g.name === currentGroupName)
+            if (!currentGroup) return <p className="text-gray-500">No current group selected</p>
+            return (
+              <CalendarSubscription
+                groupDocId={currentGroup.doc_id}
+                groupName={currentGroup.name}
+              />
+            )
+          })()}
         </div>
       )}
 

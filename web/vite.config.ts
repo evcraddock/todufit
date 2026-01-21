@@ -15,6 +15,11 @@ export default defineConfig({
         target: `http://localhost:${honoPort}`,
         changeOrigin: true,
       },
+      // API routes → Hono server
+      '/api': {
+        target: `http://localhost:${honoPort}`,
+        changeOrigin: true,
+      },
     },
   },
 })
