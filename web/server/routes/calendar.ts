@@ -68,8 +68,8 @@ calendarRoutes.get('/t/:token', async (c) => {
   // Generate iCalendar
   const appUrl = process.env.PUBLIC_URL || 'http://localhost:5173'
   const icalendar = generateICalendar(mealPlans, {
-    calendarName: 'Meal Plans',
-    groupName: 'todu-fit',
+    calendarName: 'Todu Fit',
+    groupName: 'Todu Fit',
     appUrl,
     dishes: dishes || undefined,
   })

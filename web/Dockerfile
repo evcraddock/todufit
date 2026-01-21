@@ -17,6 +17,10 @@ RUN npm run build:server
 FROM node:22-alpine
 WORKDIR /app
 
+# Sync server URL for server-side connections (passed from build args)
+ARG VITE_SYNC_URL
+ENV SYNC_URL=${VITE_SYNC_URL}
+
 # Install build dependencies for native modules (better-sqlite3)
 RUN apk add --no-cache python3 make g++
 
