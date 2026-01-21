@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useRepoState, RepoLoading } from '../repo'
 import { useDishes } from './useDishes'
 import { Dish, Ingredient } from './types'
+import { Markdown } from '../components'
 
 interface IngredientInput {
   quantity: string
@@ -42,6 +43,9 @@ function DishFormContent() {
   const [protein, setProtein] = useState('')
   const [carbs, setCarbs] = useState('')
   const [fat, setFat] = useState('')
+  
+  // Instructions preview state
+  const [showPreview, setShowPreview] = useState(false)
 
   // Load existing dish data - only when id changes or loading completes
   // Using id as dependency instead of existingDish to avoid infinite loops
@@ -382,17 +386,36 @@ function DishFormContent() {
 
         {/* Instructions */}
         <div>
-          <label htmlFor="instructions" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-            Instructions
-          </label>
-          <textarea
-            id="instructions"
-            value={instructions}
-            onChange={(e) => setInstructions(e.target.value)}
-            rows={8}
-            placeholder="Step-by-step cooking instructions..."
-            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-          />
+          <div className="flex justify-between items-center mb-1">
+            <label htmlFor="instructions" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Instructions
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowPreview(!showPreview)}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              {showPreview ? 'Edit' : 'Preview'}
+            </button>
+          </div>
+          {showPreview ? (
+            <div className="w-full min-h-[200px] px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+              {instructions.trim() ? (
+                <Markdown>{instructions}</Markdown>
+              ) : (
+                <p className="text-gray-400 dark:text-gray-500 italic">No instructions to preview</p>
+              )}
+            </div>
+          ) : (
+            <textarea
+              id="instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              rows={8}
+              placeholder="Step-by-step cooking instructions... (supports **bold**, *italic*, lists, etc.)"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+            />
+          )}
         </div>
 
         {/* Actions */}

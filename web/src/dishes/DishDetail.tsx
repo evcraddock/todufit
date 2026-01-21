@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useRepoState, RepoLoading } from '../repo'
 import { useDishes } from './useDishes'
-import { ConfirmDialog } from '../components'
+import { ConfirmDialog, Markdown } from '../components'
 
 export function DishDetail() {
   const { isReady } = useRepoState()
@@ -127,9 +127,7 @@ function DishDetailContent() {
       {dish.instructions && (
         <section className="mt-8">
           <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Instructions</h2>
-          <div className="whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-300">
-            {dish.instructions}
-          </div>
+          <Markdown>{dish.instructions}</Markdown>
         </section>
       )}
 
