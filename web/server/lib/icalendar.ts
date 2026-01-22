@@ -161,7 +161,7 @@ export function generateICalendar(
     }
 
     if (appUrl) {
-      descParts.push(`View in app: ${appUrl}/calendar`)
+      descParts.push(`View in app: ${appUrl}/meals/${plan.date}`)
     }
 
     const description = descParts.join('\\n\\n')
